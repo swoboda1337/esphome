@@ -36,7 +36,12 @@ from esphome.const import (
 from esphome.core import CORE, HexInt, TimePeriod
 from esphome.cpp_generator import RawExpression
 import esphome.final_validate as fv
-from esphome.helpers import copy_file_if_changed, mkdir_p, write_file_if_changed
+from esphome.helpers import (
+    IS_WINDOWS,
+    copy_file_if_changed,
+    mkdir_p,
+    write_file_if_changed,
+)
 from esphome.types import ConfigType
 
 from .boards import BOARDS
@@ -822,6 +827,13 @@ async def to_code(config):
                 ref=component.get(CONF_REF),
                 path=component.get(CONF_PATH),
             )
+
+        if IS_WINDOWS:
+            os.environ["PLATFORMIO_CORE_DIR"] = (
+                f"%HOMEPATH%\\.platformio\\idf{framework_ver}"
+            )
+        else:
+            os.environ["PLATFORMIO_CORE_DIR"] = f"~/.platformio/idf{framework_ver}"
     elif conf[CONF_TYPE] == FRAMEWORK_ARDUINO:
         cg.add_platformio_option("framework", "arduino")
         cg.add_build_flag("-DUSE_ARDUINO")
@@ -840,6 +852,13 @@ async def to_code(config):
             ),
         )
         cg.add(RawExpression(f"setCpuFrequencyMhz({freq})"))
+
+        if IS_WINDOWS:
+            os.environ["PLATFORMIO_CORE_DIR"] = (
+                f"%HOMEPATH%\\.platformio\\ard{framework_ver}"
+            )
+        else:
+            os.environ["PLATFORMIO_CORE_DIR"] = f"~/.platformio/ard{framework_ver}"
 
 
 APP_PARTITION_SIZES = {
