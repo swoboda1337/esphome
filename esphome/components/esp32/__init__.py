@@ -623,16 +623,19 @@ ESP_IDF_FRAMEWORK_SCHEMA = cv.All(
             ),
             cv.Optional(CONF_COMPONENTS, default=[]): cv.ensure_list(
                 cv.All(
-                    cv.Schema(
-                        {
-                            cv.Required(CONF_NAME): cv.string_strict,
-                            cv.Optional(CONF_SOURCE): cv.git_ref,
-                            cv.Optional(CONF_REF): cv.string,
-                            cv.Optional(CONF_PATH): cv.string,
-                            cv.Optional(CONF_REFRESH): cv.All(
-                                cv.string, cv.source_refresh
-                            ),
-                        }
+                    cv.Any(
+                        cv.Schema(
+                            {
+                                cv.Required(CONF_NAME): cv.string_strict,
+                                cv.Optional(CONF_SOURCE): cv.git_ref,
+                                cv.Optional(CONF_REF): cv.string,
+                                cv.Optional(CONF_PATH): cv.string,
+                                cv.Optional(CONF_REFRESH): cv.All(
+                                    cv.string, cv.source_refresh
+                                ),
+                            }
+                        ),
+                        cv.string_strict,
                     ),
                     _validate_idf_component,
                 )
@@ -827,12 +830,19 @@ async def to_code(config):
             add_idf_sdkconfig_option(name, RawSdkconfigValue(value))
 
         for component in conf[CONF_COMPONENTS]:
-            add_idf_component(
-                name=component[CONF_NAME],
-                repo=component.get(CONF_SOURCE),
-                ref=component.get(CONF_REF),
-                path=component.get(CONF_PATH),
-            )
+            if isinstance(value, dict):
+                add_idf_component(
+                    name=component[CONF_NAME],
+                    repo=component.get(CONF_SOURCE),
+                    ref=component.get(CONF_REF),
+                    path=component.get(CONF_PATH),
+                )
+            else:
+                name, ref = component.split("^", 1)
+                add_idf_component(
+                    name=name,
+                    ref=ref,
+                )
     elif conf[CONF_TYPE] == FRAMEWORK_ARDUINO:
         cg.add_platformio_option("framework", "arduino")
         cg.add_build_flag("-DUSE_ARDUINO")
