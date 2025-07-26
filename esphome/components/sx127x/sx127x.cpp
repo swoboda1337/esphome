@@ -22,6 +22,7 @@ static const int32_t RSSI_OFFSET_LF = 164;
 
 uint8_t SX127x::read_register_(uint8_t reg) {
   this->enable();
+  delayMicroseconds(1);
   this->write_byte(reg & 0x7F);
   uint8_t value = this->read_byte();
   this->disable();
@@ -30,6 +31,7 @@ uint8_t SX127x::read_register_(uint8_t reg) {
 
 void SX127x::write_register_(uint8_t reg, uint8_t value) {
   this->enable();
+  delayMicroseconds(1);
   this->write_byte(reg | 0x80);
   this->write_byte(value);
   this->disable();
@@ -37,6 +39,7 @@ void SX127x::write_register_(uint8_t reg, uint8_t value) {
 
 void SX127x::read_fifo_(std::vector<uint8_t> &packet) {
   this->enable();
+  delayMicroseconds(1);
   this->write_byte(REG_FIFO & 0x7F);
   this->read_array(packet.data(), packet.size());
   this->disable();
@@ -44,6 +47,7 @@ void SX127x::read_fifo_(std::vector<uint8_t> &packet) {
 
 void SX127x::write_fifo_(const std::vector<uint8_t> &packet) {
   this->enable();
+  delayMicroseconds(1);
   this->write_byte(REG_FIFO | 0x80);
   this->write_array(packet.data(), packet.size());
   this->disable();
@@ -371,8 +375,8 @@ void SX127x::set_mode_(uint8_t modulation, uint8_t mode) {
       }
       break;
     }
-    if (millis() - start > 20) {
-      ESP_LOGE(TAG, "Set mode failure");
+    if (millis() - start > 2000) {
+      ESP_LOGE(TAG, "Set mode failure: %02x, %02x, %02x", this->read_register_(REG_OP_MODE), modulation, mode);
       this->mark_failed();
       break;
     }
