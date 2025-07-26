@@ -381,6 +381,7 @@ void SX127x::set_mode_(uint8_t modulation, uint8_t mode) {
       break;
     }
   }
+  ESP_LOGD(TAG, "Set mode took: " PRIi32, millis() - start);
 }
 
 void SX127x::set_mode_rx() {
