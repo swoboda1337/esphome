@@ -58,7 +58,7 @@ class SX126x : public Component,
                                      spi::DATA_RATE_8MHZ> {
  public:
   size_t get_max_packet_size();
-  float get_setup_priority() const override { return setup_priority::PROCESSOR; }
+  float get_setup_priority() const override { return setup_priority::HARDWARE; }
   void setup() override;
   void loop() override;
   void dump_config() override;
