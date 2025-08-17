@@ -398,6 +398,12 @@ void HOT Scheduler::call(uint32_t now) {
         this->pop_raw_();
         continue;
       }
+      // Don't run removed items
+      if (item->remove) {
+        this->to_remove_--;
+        this->pop_raw_();
+        continue;
+      }
 #ifdef ESPHOME_DEBUG_SCHEDULER
       const char *item_name = item->get_name();
       ESP_LOGV(TAG, "Running %s '%s/%s' with interval=%" PRIu32 " next_execution=%" PRIu64 " (now=%" PRIu64 ")",
