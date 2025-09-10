@@ -170,7 +170,7 @@ void EZOSensor::add_command_(const std::string &command, EzoCommandType command_
 
 void EZOSensor::set_calibration_point_(EzoCalibrationType type, float value) {
   std::string payload = str_sprintf("Cal,%s,%0.2f", EZO_CALIBRATION_TYPE_STRINGS[type], value);
-  this->add_command_(payload, EzoCommandType::EZO_CALIBRATION, 900);
+  this->add_command_(payload, EzoCommandType::EZO_CALIBRATION, 1300);
 }
 
 void EZOSensor::set_address(uint8_t address) {
@@ -187,7 +187,7 @@ void EZOSensor::get_device_information() { this->add_command_("i", EzoCommandTyp
 
 void EZOSensor::set_sleep() { this->add_command_("Sleep", EzoCommandType::EZO_SLEEP); }
 
-void EZOSensor::get_state() { this->add_command_("R", EzoCommandType::EZO_READ, 900); }
+void EZOSensor::get_state() { this->add_command_("R", EzoCommandType::EZO_READ, 1000); }
 
 void EZOSensor::get_slope() { this->add_command_("Slope,?", EzoCommandType::EZO_SLOPE); }
 
