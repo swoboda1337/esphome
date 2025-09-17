@@ -17,7 +17,7 @@ void DooyaProtocol::encode(RemoteTransmitData *dst, const DooyaData &data) {
   dst->set_carrier_frequency(0);
   dst->reserve(2 + 40 * 2u);
 
-  dst->item(HEADER_HIGH_US, HEADER_LOW_US);
+  dst->item(HEADER_HIGH_US, HEADER_LOW_US / 2);
 
   for (uint32_t mask = 1UL << (23); mask != 0; mask >>= 1) {
     if (data.id & mask) {
