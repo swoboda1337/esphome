@@ -58,7 +58,7 @@ optional<DooyaData> DooyaProtocol::decode(RemoteReceiveData src) {
       .button = 0,
       .check = 0,
   };
-  if (!src.expect_item(HEADER_HIGH_US, HEADER_LOW_US))
+  if (!src.expect_item(HEADER_HIGH_US, HEADER_LOW_US) && !src.expect_item(HEADER_HIGH_US, HEADER_LOW_US / 2))
     return {};
 
   for (uint8_t i = 0; i < 24; i++) {
