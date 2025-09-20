@@ -55,7 +55,7 @@ void INA2XX::setup() {
     this->mark_failed();
     return;
   }
-  delay(2);
+  delay(5);
 
   if (!this->check_device_model_()) {
     ESP_LOGE(TAG, "Device not supported or model selected improperly in yaml file");
