@@ -228,7 +228,7 @@ def _decode_pc(config, addr):
 
 
 def _parse_register(config, regex, line):
-    match = regex.match(line)
+    match = regex.search(line)
     if match is not None:
         _decode_pc(config, match.group(1))
 
