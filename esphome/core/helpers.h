@@ -24,6 +24,7 @@
 
 #ifdef USE_ESP32
 #include <esp_heap_caps.h>
+#include <rom/uart.h>  // see issue 10975
 #endif
 
 #if defined(USE_ESP32)
