@@ -12,6 +12,15 @@
 namespace esphome {
 namespace remote_transmitter {
 
+#if defined(USE_ESP32)
+struct RemoteTransmitterComponentStore {
+  uint32_t send_times{0};
+  uint32_t send_wait{0};
+  uint32_t wait{0};
+  uint32_t index{0};
+};
+#endif
+
 class RemoteTransmitterComponent : public remote_base::RemoteTransmitterBase,
                                    public Component
 #ifdef USE_ESP32
@@ -56,9 +65,13 @@ class RemoteTransmitterComponent : public remote_base::RemoteTransmitterBase,
 #ifdef USE_ESP32
   void configure_rmt_();
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
+  RemoteTransmitterComponentStore store_{};
+#else
+  std::vector<rmt_symbol_word_t> rmt_temp_{};
+#endif
   uint32_t current_carrier_frequency_{38000};
   bool initialized_{false};
-  std::vector<rmt_symbol_word_t> rmt_temp_;
   bool with_dma_{false};
   bool eot_level_{false};
   rmt_channel_handle_t channel_{NULL};

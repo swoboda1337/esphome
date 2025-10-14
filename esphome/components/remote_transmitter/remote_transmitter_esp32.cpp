@@ -10,6 +10,39 @@ namespace remote_transmitter {
 
 static const char *const TAG = "remote_transmitter";
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
+static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size_t symbols_written, size_t symbols_free,
+                                             rmt_symbol_word_t *symbols, bool *done, void *arg) {
+  auto *store = static_cast<RemoteTransmitterComponentStore *>(arg);
+  const auto *temp = static_cast<const int32_t *>(data);
+  size_t size = size / sizeof(int32_t);
+  size_t num = 0;
+
+  // convert byte to symbols
+  if (store->curr_index < size) {
+    if (symbols_free < RMT_SYMBOLS_PER_BYTE) {
+      return 0;
+    }
+    for (size_t i = 0; i < RMT_SYMBOLS_PER_BYTE; i++) {
+      if (bytes[index] & (1 << (7 - i))) {
+        symbols[i] = params->bit1;
+      } else {
+        symbols[i] = params->bit0;
+      }
+    }
+    return RMT_SYMBOLS_PER_BYTE;
+  }
+
+  // send reset
+  if (symbols_free < 1) {
+    return 0;
+  }
+  symbols[0] = params->reset;
+  *done = true;
+  return 1;
+}
+#endif
+
 void RemoteTransmitterComponent::setup() {
   this->inverted_ = this->pin_->is_inverted();
   this->configure_rmt_();
@@ -90,6 +123,20 @@ void RemoteTransmitterComponent::configure_rmt_() {
       gpio_pullup_dis(gpio_num_t(this->pin_->get_pin()));
     }
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
+    rmt_simple_encoder_config_t encoder;
+    memset(&encoder, 0, sizeof(encoder));
+    encoder.callback = encoder_callback;
+    encoder.arg = &this->store_;
+    encoder.min_chunk_size = 1;
+    error = rmt_new_simple_encoder(&encoder, &this->encoder_);
+    if (error != ESP_OK) {
+      this->error_code_ = error;
+      this->error_string_ = "in rmt_new_simple_encoder";
+      this->mark_failed();
+      return;
+    }
+#else
     rmt_copy_encoder_config_t encoder;
     memset(&encoder, 0, sizeof(encoder));
     error = rmt_new_copy_encoder(&encoder, &this->encoder_);
@@ -99,6 +146,7 @@ void RemoteTransmitterComponent::configure_rmt_() {
       this->mark_failed();
       return;
     }
+#endif
 
     error = rmt_enable(this->channel_);
     if (error != ESP_OK) {
@@ -139,6 +187,31 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
     this->configure_rmt_();
   }
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
+  rmt_transmit_config_t config;
+  memset(&config, 0, sizeof(config));
+  config.loop_count = 0;
+  config.flags.eot_level = this->eot_level_;
+  this->store_.send_times = send_times;
+  this->store_.send_wait = send_wait;
+  this->store_.wait = 0;
+  this->store_.index = 0;
+  this->transmit_trigger_->trigger();
+  esp_err_t error = rmt_transmit(this->channel_, this->encoder_, this->temp_.get_data().data(),
+                                 this->temp_.get_data().size() * sizeof(int32_t), &config);
+  if (error != ESP_OK) {
+    ESP_LOGW(TAG, "rmt_transmit failed: %s", esp_err_to_name(error));
+    this->status_set_warning();
+  } else {
+    this->status_clear_warning();
+  }
+  error = rmt_tx_wait_all_done(this->channel_, -1);
+  if (error != ESP_OK) {
+    ESP_LOGW(TAG, "rmt_tx_wait_all_done failed: %s", esp_err_to_name(error));
+    this->status_set_warning();
+  }
+  this->complete_trigger_->trigger();
+#else
   this->rmt_temp_.clear();
   this->rmt_temp_.reserve((this->temp_.get_data().size() + 1) / 2);
   uint32_t rmt_i = 0;
@@ -199,6 +272,7 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
       delayMicroseconds(send_wait);
   }
   this->complete_trigger_->trigger();
+#endif
 }
 
 }  // namespace remote_transmitter
