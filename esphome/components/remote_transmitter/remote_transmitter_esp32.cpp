@@ -11,7 +11,7 @@ namespace remote_transmitter {
 static const char *const TAG = "remote_transmitter";
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
-static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size_t symbols_written, size_t symbols_free,
+static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size_t written, size_t free,
                                              rmt_symbol_word_t *symbols, bool *done, void *arg) {
   auto *store = static_cast<RemoteTransmitterComponentStore *>(arg);
   const auto *encoded = static_cast<const rmt_symbol_word_t *>(data);
@@ -19,16 +19,14 @@ static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size
 
   // Delay if needed
   if (store->delay > 0) {
-    for (size_t i = 0; i < symbols_free; i++) {
+    for (size_t i = 0; i < free; i++) {
       rmt_symbol_word_t rmt_item;
-      uint32_t item0 = std::min(store->delay, uint32_t(32767));
-      store->delay -= item0;
-      uint32_t item1 = std::min(store->delay, uint32_t(32767));
-      store->delay -= item1;
       rmt_item.level0 = store->eot_level;
-      rmt_item.duration0 = item0;
       rmt_item.level1 = store->eot_level;
-      rmt_item.duration1 = item1;
+      rmt_item.duration0 = std::min(store->delay, uint32_t(32767));
+      store->delay -= rmt_item.duration0;
+      rmt_item.duration1 = std::min(store->delay, uint32_t(32767));
+      store->delay -= rmt_item.duration1;
       *out++ = rmt_item;
       if (store->delay == 0) {
         break;
@@ -38,7 +36,7 @@ static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size
   }
 
   // Send encoded symbols
-  for (size_t i = 0; i < symbols_free; i++) {
+  for (size_t i = 0; i < free; i++) {
     *out++ = encoded[store->index++];
     if (store->index == size) {
       break;

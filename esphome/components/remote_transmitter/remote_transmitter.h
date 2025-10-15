@@ -12,7 +12,7 @@
 namespace esphome {
 namespace remote_transmitter {
 
-#if defined(USE_ESP32)
+#if defined(USE_ESP32) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
 struct RemoteTransmitterComponentStore {
   bool eot_level{false};
   uint32_t send_times{0};
