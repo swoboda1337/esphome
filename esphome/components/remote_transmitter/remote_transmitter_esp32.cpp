@@ -15,7 +15,8 @@ static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size
                                              rmt_symbol_word_t *symbols, bool *done, void *arg) {
   auto *store = static_cast<RemoteTransmitterComponentStore *>(arg);
   const auto *encoded = static_cast<const rmt_symbol_word_t *>(data);
-  rmt_symbol_word_t *out = symbols;
+  size_t length = size / sizeof(rmt_symbol_word_t);
+  size_t count = 0;
 
   // Delay if needed
   if (store->delay > 0) {
@@ -27,28 +28,28 @@ static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size
       store->delay -= rmt_item.duration0;
       rmt_item.duration1 = std::min(store->delay, uint32_t(32767));
       store->delay -= rmt_item.duration1;
-      *out++ = rmt_item;
+      symbols[count++] = rmt_item;
       if (store->delay == 0) {
         break;
       }
     }
-    return out - symbols;
+    return count;
   }
 
   // Send encoded symbols
   for (size_t i = 0; i < free; i++) {
-    *out++ = encoded[store->index++];
-    if (store->index == size) {
+    symbols[count++] = encoded[store->index++];
+    if (store->index == length) {
       break;
     }
   }
-  if (store->index == size) {
+  if (store->index == length) {
     store->index = 0;
     store->delay = store->send_wait;
     store->send_times--;
     *done = (store->send_times == 0);
   }
-  return out - symbols;
+  return count;
 }
 #endif
 
@@ -84,8 +85,11 @@ void RemoteTransmitterComponent::digital_write(bool value) {
   };
   rmt_transmit_config_t config;
   memset(&config, 0, sizeof(config));
-  config.loop_count = 0;
   config.flags.eot_level = value;
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
+  memset(&this->store_, 0, sizeof(this->store_));
+  this->store_.send_times = 1;
+#endif
   esp_err_t error = rmt_transmit(this->channel_, this->encoder_, &symbol, sizeof(symbol), &config);
   if (error != ESP_OK) {
     ESP_LOGW(TAG, "rmt_transmit failed: %s", esp_err_to_name(error));
@@ -235,17 +239,17 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
   }
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
+  this->transmit_trigger_->trigger();
+
   rmt_transmit_config_t config;
   memset(&config, 0, sizeof(config));
-  config.loop_count = 0;
   config.flags.eot_level = this->eot_level_;
   memset(&this->store_, 0, sizeof(this->store_));
   this->store_.eot_level = this->eot_level_;
   this->store_.send_times = send_times;
   this->store_.send_wait = this->from_microseconds_(send_wait);
-  this->transmit_trigger_->trigger();
-  esp_err_t error =
-      rmt_transmit(this->channel_, this->encoder_, this->rmt_temp_.data(), this->rmt_temp_.size(), &config);
+  esp_err_t error = rmt_transmit(this->channel_, this->encoder_, this->rmt_temp_.data(),
+                                 this->rmt_temp_.size() * sizeof(rmt_symbol_word_t), &config);
   if (error != ESP_OK) {
     ESP_LOGW(TAG, "rmt_transmit failed: %s", esp_err_to_name(error));
     this->status_set_warning();
@@ -257,6 +261,7 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
     ESP_LOGW(TAG, "rmt_tx_wait_all_done failed: %s", esp_err_to_name(error));
     this->status_set_warning();
   }
+
   this->complete_trigger_->trigger();
 #else
   this->transmit_trigger_->trigger();
