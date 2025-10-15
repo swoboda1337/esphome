@@ -17,7 +17,7 @@ static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size
   const auto *encoded = static_cast<const rmt_symbol_word_t *>(data);
   rmt_symbol_word_t *out = symbols;
 
-  // Send delay if needed
+  // Delay if needed
   if (store->delay > 0) {
     for (size_t i = 0; i < symbols_free; i++) {
       rmt_symbol_word_t rmt_item;
@@ -46,8 +46,8 @@ static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size
   }
   if (store->index == size) {
     store->index = 0;
-    store->send_times--;
     store->delay = store->send_wait;
+    store->send_times--;
     *done = (store->send_times == 0);
   }
   return out - symbols;
@@ -244,7 +244,7 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
   memset(&this->store_, 0, sizeof(this->store_));
   this->store_.eot_level = this->eot_level_;
   this->store_.send_times = send_times;
-  this->store_.send_wait = send_wait;
+  this->store_.send_wait = this->from_microseconds_(send_wait);
   this->transmit_trigger_->trigger();
   esp_err_t error =
       rmt_transmit(this->channel_, this->encoder_, this->rmt_temp_.data(), this->rmt_temp_.size(), &config);
