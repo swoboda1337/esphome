@@ -14,32 +14,44 @@ static const char *const TAG = "remote_transmitter";
 static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size_t symbols_written, size_t symbols_free,
                                              rmt_symbol_word_t *symbols, bool *done, void *arg) {
   auto *store = static_cast<RemoteTransmitterComponentStore *>(arg);
-  const auto *temp = static_cast<const int32_t *>(data);
-  size_t size = size / sizeof(int32_t);
-  size_t num = 0;
+  const auto *encoded = static_cast<const rmt_symbol_word_t *>(data);
+  rmt_symbol_word_t *out = symbols
 
-  // convert byte to symbols
-  if (store->curr_index < size) {
-    if (symbols_free < RMT_SYMBOLS_PER_BYTE) {
-      return 0;
-    }
-    for (size_t i = 0; i < RMT_SYMBOLS_PER_BYTE; i++) {
-      if (bytes[index] & (1 << (7 - i))) {
-        symbols[i] = params->bit1;
-      } else {
-        symbols[i] = params->bit0;
+      if (store->delay > 0) {
+    for (size_t i = 0; i < symbols_free; i++) {
+      rmt_symbol_word_t rmt_item;
+      int32_t item0 = std::min(store->delay, int32_t(32767));
+      store->delay -= item0;
+      int32_t item1 = std::min(store->delay, int32_t(32767));
+      store->delay -= item1;
+      rmt_item.level0 = this->eot_level_;
+      rmt_item.duration0 = static_cast<uint32_t>(item0);
+      rmt_item.level1 = this->eot_level_;
+      rmt_item.duration1 = static_cast<uint32_t>(item1);
+      *out++ = rmt_item;
+      if (store->delay == 0) {
+        break;
       }
     }
-    return RMT_SYMBOLS_PER_BYTE;
+    return out - symbols;
   }
 
-  // send reset
-  if (symbols_free < 1) {
-    return 0;
+  for (size_t i = 0; i < symbols_free; i++) {
+    *out++ = encoded[this->store_.index++];
+    if (this->store_.index == size) {
+      break;
+    }
   }
-  symbols[0] = params->reset;
-  *done = true;
-  return 1;
+  if (this->store_.index == size) {
+    this->store_.index = 0;
+    if (this->store_.send_repeat == 0) {
+      *done = true;
+    } else {
+      this->store_.send_repeat--;
+      this->store_.delay = this->store_.send_wait;
+    }
+  }
+  return out - symbols;
 }
 #endif
 
@@ -187,31 +199,6 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
     this->configure_rmt_();
   }
 
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
-  rmt_transmit_config_t config;
-  memset(&config, 0, sizeof(config));
-  config.loop_count = 0;
-  config.flags.eot_level = this->eot_level_;
-  this->store_.send_times = send_times;
-  this->store_.send_wait = send_wait;
-  this->store_.wait = 0;
-  this->store_.index = 0;
-  this->transmit_trigger_->trigger();
-  esp_err_t error = rmt_transmit(this->channel_, this->encoder_, this->temp_.get_data().data(),
-                                 this->temp_.get_data().size() * sizeof(int32_t), &config);
-  if (error != ESP_OK) {
-    ESP_LOGW(TAG, "rmt_transmit failed: %s", esp_err_to_name(error));
-    this->status_set_warning();
-  } else {
-    this->status_clear_warning();
-  }
-  error = rmt_tx_wait_all_done(this->channel_, -1);
-  if (error != ESP_OK) {
-    ESP_LOGW(TAG, "rmt_tx_wait_all_done failed: %s", esp_err_to_name(error));
-    this->status_set_warning();
-  }
-  this->complete_trigger_->trigger();
-#else
   this->rmt_temp_.clear();
   this->rmt_temp_.reserve((this->temp_.get_data().size() + 1) / 2);
   uint32_t rmt_i = 0;
@@ -249,14 +236,40 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
     ESP_LOGE(TAG, "Empty data");
     return;
   }
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
+  rmt_transmit_config_t config;
+  memset(&config, 0, sizeof(config));
+  config.loop_count = 0;
+  config.flags.eot_level = this->eot_level_;
+  memset(&this->store_, 0, sizeof(this->store_));
+  this->store_.eot_level = this->eot_level_;
+  this->store_.send_times = send_times;
+  this->store_.send_wait = send_wait;
+  this->transmit_trigger_->trigger();
+  esp_err_t error =
+      rmt_transmit(this->channel_, this->encoder_, this->rmt_temp_.data(), this->rmt_temp_.size(), &config);
+  if (error != ESP_OK) {
+    ESP_LOGW(TAG, "rmt_transmit failed: %s", esp_err_to_name(error));
+    this->status_set_warning();
+  } else {
+    this->status_clear_warning();
+  }
+  error = rmt_tx_wait_all_done(this->channel_, -1);
+  if (error != ESP_OK) {
+    ESP_LOGW(TAG, "rmt_tx_wait_all_done failed: %s", esp_err_to_name(error));
+    this->status_set_warning();
+  }
+  this->complete_trigger_->trigger();
+#else
   this->transmit_trigger_->trigger();
   for (uint32_t i = 0; i < send_times; i++) {
     rmt_transmit_config_t config;
     memset(&config, 0, sizeof(config));
     config.loop_count = 0;
     config.flags.eot_level = this->eot_level_;
-    esp_err_t error = rmt_transmit(this->channel_, this->encoder_, this->rmt_temp_.data(),
-                                   this->rmt_temp_.size() * sizeof(rmt_symbol_word_t), &config);
+    esp_err_t error =
+        rmt_transmit(this->channel_, this->encoder_, this->rmt_temp_.data(), this->rmt_temp_.size(), &config);
     if (error != ESP_OK) {
       ESP_LOGW(TAG, "rmt_transmit failed: %s", esp_err_to_name(error));
       this->status_set_warning();
