@@ -15,8 +15,8 @@ namespace remote_transmitter {
 #if defined(USE_ESP32)
 struct RemoteTransmitterComponentStore {
   bool eot_level{false};
-  uint32_t send_repeat{0};
-  uint32_t send_delay{0};
+  uint32_t send_times{0};
+  uint32_t send_wait{0};
   uint32_t delay{0};
   uint32_t index{0};
 };

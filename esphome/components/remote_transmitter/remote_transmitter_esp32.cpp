@@ -17,17 +17,18 @@ static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size
   const auto *encoded = static_cast<const rmt_symbol_word_t *>(data);
   rmt_symbol_word_t *out = symbols;
 
+  // Send delay if needed
   if (store->delay > 0) {
     for (size_t i = 0; i < symbols_free; i++) {
       rmt_symbol_word_t rmt_item;
-      int32_t item0 = std::min(store->delay, int32_t(32767));
+      uint32_t item0 = std::min(store->delay, uint32_t(32767));
       store->delay -= item0;
-      int32_t item1 = std::min(store->delay, int32_t(32767));
+      uint32_t item1 = std::min(store->delay, uint32_t(32767));
       store->delay -= item1;
-      rmt_item.level0 = this->eot_level_;
-      rmt_item.duration0 = static_cast<uint32_t>(item0);
-      rmt_item.level1 = this->eot_level_;
-      rmt_item.duration1 = static_cast<uint32_t>(item1);
+      rmt_item.level0 = store->eot_level;
+      rmt_item.duration0 = item0;
+      rmt_item.level1 = store->eot_level;
+      rmt_item.duration1 = item1;
       *out++ = rmt_item;
       if (store->delay == 0) {
         break;
@@ -36,20 +37,18 @@ static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size
     return out - symbols;
   }
 
+  // Send encoded symbols
   for (size_t i = 0; i < symbols_free; i++) {
-    *out++ = encoded[this->store_.index++];
-    if (this->store_.index == size) {
+    *out++ = encoded[store->index++];
+    if (store->index == size) {
       break;
     }
   }
-  if (this->store_.index == size) {
-    this->store_.index = 0;
-    if (this->store_.send_repeat == 0) {
-      *done = true;
-    } else {
-      this->store_.send_repeat--;
-      this->store_.delay = this->store_.send_wait;
-    }
+  if (store->index == size) {
+    store->index = 0;
+    store->send_times--;
+    store->delay = store->send_wait;
+    *done = (store->send_times == 0);
   }
   return out - symbols;
 }
