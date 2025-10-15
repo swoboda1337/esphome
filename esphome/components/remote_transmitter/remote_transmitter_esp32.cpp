@@ -15,9 +15,9 @@ static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size
                                              rmt_symbol_word_t *symbols, bool *done, void *arg) {
   auto *store = static_cast<RemoteTransmitterComponentStore *>(arg);
   const auto *encoded = static_cast<const rmt_symbol_word_t *>(data);
-  rmt_symbol_word_t *out = symbols
+  rmt_symbol_word_t *out = symbols;
 
-      if (store->delay > 0) {
+  if (store->delay > 0) {
     for (size_t i = 0; i < symbols_free; i++) {
       rmt_symbol_word_t rmt_item;
       int32_t item0 = std::min(store->delay, int32_t(32767));
@@ -268,8 +268,8 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
     memset(&config, 0, sizeof(config));
     config.loop_count = 0;
     config.flags.eot_level = this->eot_level_;
-    esp_err_t error =
-        rmt_transmit(this->channel_, this->encoder_, this->rmt_temp_.data(), this->rmt_temp_.size(), &config);
+    esp_err_t error = rmt_transmit(this->channel_, this->encoder_, this->rmt_temp_.data(),
+                                   this->rmt_temp_.size() * sizeof(rmt_symbol_word_t), &config);
     if (error != ESP_OK) {
       ESP_LOGW(TAG, "rmt_transmit failed: %s", esp_err_to_name(error));
       this->status_set_warning();
