@@ -199,6 +199,7 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
   this->rmt_temp_.reserve(this->temp_.get_data().size() + 1);
 
   // encode wait time at the start of the buffer to simplify the encoder callback
+  // this will be skipped the first time around
   send_wait = this->from_microseconds_(static_cast<uint32_t>(send_wait));
   while (send_wait > 0) {
     int32_t duration = std::min(send_wait, int32_t(32767));
@@ -240,7 +241,7 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
   config.flags.eot_level = this->eot_level_;
   memset(&this->store_, 0, sizeof(this->store_));
   this->store_.times = send_times;
-  this->store_.index = offset;  // skip send_wait the first time around
+  this->store_.index = offset;
   esp_err_t error = rmt_transmit(this->channel_, this->encoder_, this->rmt_temp_.data(),
                                  this->rmt_temp_.size() * sizeof(rmt_symbol_half_t), &config);
   if (error != ESP_OK) {
