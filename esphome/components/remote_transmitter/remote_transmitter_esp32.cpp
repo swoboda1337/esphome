@@ -71,16 +71,24 @@ void RemoteTransmitterComponent::dump_config() {
 }
 
 void RemoteTransmitterComponent::digital_write(bool value) {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
   rmt_symbol_half_t symbol = {
       .duration = 1,
       .level = value,
   };
   rmt_transmit_config_t config;
   memset(&config, 0, sizeof(config));
-  config.flags.eot_level = value;
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
   this->store_.times = 1;
   this->store_.index = 0;
+#else
+  rmt_symbol_word_t symbol = {
+      .duration0 = 1,
+      .level0 = value,
+      .duration1 = 0,
+      .level1 = value,
+  };
+  rmt_transmit_config_t config;
+  memset(&config, 0, sizeof(config));
 #endif
   esp_err_t error = rmt_transmit(this->channel_, this->encoder_, &symbol, sizeof(symbol), &config);
   if (error != ESP_OK) {
@@ -183,6 +191,7 @@ void RemoteTransmitterComponent::configure_rmt_() {
   }
 }
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
 void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t send_wait) {
   if (this->is_failed()) {
     return;
@@ -231,7 +240,6 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
     return;
   }
 
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
   this->transmit_trigger_->trigger();
 
   rmt_transmit_config_t config;
@@ -254,7 +262,54 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
   }
 
   this->complete_trigger_->trigger();
+}
 #else
+void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t send_wait) {
+  if (this->is_failed())
+    return;
+
+  if (this->current_carrier_frequency_ != this->temp_.get_carrier_frequency()) {
+    this->current_carrier_frequency_ = this->temp_.get_carrier_frequency();
+    this->configure_rmt_();
+  }
+
+  this->rmt_temp_.clear();
+  this->rmt_temp_.reserve((this->temp_.get_data().size() + 1) / 2);
+  uint32_t rmt_i = 0;
+  rmt_symbol_word_t rmt_item;
+
+  for (int32_t val : this->temp_.get_data()) {
+    bool level = val >= 0;
+    if (!level)
+      val = -val;
+    val = this->from_microseconds_(static_cast<uint32_t>(val));
+
+    do {
+      int32_t item = std::min(val, int32_t(32767));
+      val -= item;
+
+      if (rmt_i % 2 == 0) {
+        rmt_item.level0 = static_cast<uint32_t>(level ^ this->inverted_);
+        rmt_item.duration0 = static_cast<uint32_t>(item);
+      } else {
+        rmt_item.level1 = static_cast<uint32_t>(level ^ this->inverted_);
+        rmt_item.duration1 = static_cast<uint32_t>(item);
+        this->rmt_temp_.push_back(rmt_item);
+      }
+      rmt_i++;
+    } while (val != 0);
+  }
+
+  if (rmt_i % 2 == 1) {
+    rmt_item.level1 = 0;
+    rmt_item.duration1 = 0;
+    this->rmt_temp_.push_back(rmt_item);
+  }
+
+  if ((this->rmt_temp_.data() == nullptr) || this->rmt_temp_.empty()) {
+    ESP_LOGE(TAG, "Empty data");
+    return;
+  }
   this->transmit_trigger_->trigger();
   for (uint32_t i = 0; i < send_times; i++) {
     rmt_transmit_config_t config;
@@ -278,8 +333,8 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
       delayMicroseconds(send_wait);
   }
   this->complete_trigger_->trigger();
-#endif
 }
+#endif
 
 }  // namespace remote_transmitter
 }  // namespace esphome
