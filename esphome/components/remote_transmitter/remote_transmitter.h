@@ -15,10 +15,10 @@ namespace remote_transmitter {
 #if defined(USE_ESP32) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
 typedef union {
   struct {
-    uint16_t duration : 15; /*!< Duration */
-    uint16_t level : 1;     /*!< Level */
+    uint16_t duration : 15;
+    uint16_t level : 1;
   };
-  uint16_t value; /*!< Equivalent unsigned value for the RMT symbol half */
+  uint16_t val;
 } rmt_symbol_half_t;
 
 struct RemoteTransmitterComponentStore {

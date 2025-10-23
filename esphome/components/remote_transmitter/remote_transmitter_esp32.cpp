@@ -20,27 +20,27 @@ static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size
 
   // copy symbols
   for (size_t i = 0; i < free; i++) {
-    rmt_symbol_half_t sym_0 = encoded[store->index++];
+    uint16_t sym_0 = encoded[store->index++].val;
     if (store->index >= length) {
       store->index = 0;
       store->times--;
       if (store->times == 0) {
         *done = true;
-        symbols[count++] = sym_0;
+        symbols[count++].val = sym_0;
         return count;
       }
     }
-    rmt_symbol_half_t sym_1 = encoded[store->index++];
+    uint16_t sym_1 = encoded[store->index++].val;
     if (store->index >= length) {
       store->index = 0;
       store->times--;
       if (store->times == 0) {
         *done = true;
-        symbols[count++] = (sym_1 << 16) | sym_0;
+        symbols[count++].val = (sym_1 << 16) | sym_0;
         return count;
       }
     }
-    symbols[count++] = (sym_1 << 16) | sym_0;
+    symbols[count++].val = (sym_1 << 16) | sym_0;
   }
   *done = false;
   return count;
@@ -71,18 +71,16 @@ void RemoteTransmitterComponent::dump_config() {
 }
 
 void RemoteTransmitterComponent::digital_write(bool value) {
-  rmt_symbol_word_t symbol = {
-      .duration0 = 1,
-      .level0 = value,
-      .duration1 = 0,
-      .level1 = value,
+  rmt_symbol_half_t symbol = {
+      .duration = 1,
+      .level = value,
   };
   rmt_transmit_config_t config;
   memset(&config, 0, sizeof(config));
   config.flags.eot_level = value;
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
-  memset(&this->store_, 0, sizeof(this->store_));
-  this->store_.send_times = 1;
+  this->store_.times = 1;
+  this->store_.index = 0;
 #endif
   esp_err_t error = rmt_transmit(this->channel_, this->encoder_, &symbol, sizeof(symbol), &config);
   if (error != ESP_OK) {
@@ -202,10 +200,10 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
   // this will be skipped the first time around
   send_wait = this->from_microseconds_(static_cast<uint32_t>(send_wait));
   while (send_wait > 0) {
-    int32_t duration = std::min(send_wait, int32_t(32767));
+    int32_t duration = std::min(send_wait, uint32_t(32767));
     this->rmt_temp_.push_back({
-        .level = this->eot_level_,
-        .duration = duration,
+        .duration = static_cast<uint16_t>(duration),
+        .level = static_cast<uint16_t>(this->eot_level_),
     });
     send_wait -= duration;
   }
@@ -221,8 +219,8 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
     while (value > 0) {
       int32_t duration = std::min(value, int32_t(32767));
       this->rmt_temp_.push_back({
-          .level = level ^ this->inverted_,
-          .duration = duration,
+          .duration = static_cast<uint16_t>(duration),
+          .level = static_cast<uint16_t>(level ^ this->inverted_),
       });
       value -= duration;
     }
@@ -239,7 +237,6 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
   rmt_transmit_config_t config;
   memset(&config, 0, sizeof(config));
   config.flags.eot_level = this->eot_level_;
-  memset(&this->store_, 0, sizeof(this->store_));
   this->store_.times = send_times;
   this->store_.index = offset;
   esp_err_t error = rmt_transmit(this->channel_, this->encoder_, this->rmt_temp_.data(),
