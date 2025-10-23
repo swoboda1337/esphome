@@ -14,41 +14,35 @@ static const char *const TAG = "remote_transmitter";
 static size_t IRAM_ATTR HOT encoder_callback(const void *data, size_t size, size_t written, size_t free,
                                              rmt_symbol_word_t *symbols, bool *done, void *arg) {
   auto *store = static_cast<RemoteTransmitterComponentStore *>(arg);
-  const auto *encoded = static_cast<const rmt_symbol_word_t *>(data);
-  size_t length = size / sizeof(rmt_symbol_word_t);
+  const auto *encoded = static_cast<const rmt_symbol_half_t *>(data);
+  size_t length = size / sizeof(rmt_symbol_half_t);
   size_t count = 0;
 
-  // Delay if needed
-  if (store->delay > 0) {
-    for (size_t i = 0; i < free; i++) {
-      rmt_symbol_word_t rmt_item;
-      rmt_item.level0 = store->eot_level;
-      rmt_item.level1 = store->eot_level;
-      rmt_item.duration0 = std::min(store->delay, uint32_t(32767));
-      store->delay -= rmt_item.duration0;
-      rmt_item.duration1 = std::min(store->delay, uint32_t(32767));
-      store->delay -= rmt_item.duration1;
-      symbols[count++] = rmt_item;
-      if (store->delay == 0) {
-        break;
+  // copy symbols
+  for (size_t i = 0; i < free; i++) {
+    rmt_symbol_half_t sym_0 = encoded[store->index++];
+    if (store->index >= length) {
+      store->index = 0;
+      store->times--;
+      if (store->times == 0) {
+        *done = true;
+        symbols[count++] = sym_0;
+        return count;
       }
     }
-    return count;
-  }
-
-  // Send encoded symbols
-  for (size_t i = 0; i < free; i++) {
-    symbols[count++] = encoded[store->index++];
-    if (store->index == length) {
-      break;
+    rmt_symbol_half_t sym_1 = encoded[store->index++];
+    if (store->index >= length) {
+      store->index = 0;
+      store->times--;
+      if (store->times == 0) {
+        *done = true;
+        symbols[count++] = (sym_1 << 16) | sym_0;
+        return count;
+      }
     }
+    symbols[count++] = (sym_1 << 16) | sym_0;
   }
-  if (store->index == length) {
-    store->index = 0;
-    store->delay = store->send_wait;
-    store->send_times--;
-    *done = (store->send_times == 0);
-  }
+  *done = false;
   return count;
 }
 #endif
@@ -192,8 +186,9 @@ void RemoteTransmitterComponent::configure_rmt_() {
 }
 
 void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t send_wait) {
-  if (this->is_failed())
+  if (this->is_failed()) {
     return;
+  }
 
   if (this->current_carrier_frequency_ != this->temp_.get_carrier_frequency()) {
     this->current_carrier_frequency_ = this->temp_.get_carrier_frequency();
@@ -201,39 +196,38 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
   }
 
   this->rmt_temp_.clear();
-  this->rmt_temp_.reserve((this->temp_.get_data().size() + 1) / 2);
-  uint32_t rmt_i = 0;
-  rmt_symbol_word_t rmt_item;
+  this->rmt_temp_.reserve(this->temp_.get_data().size() + 1);
 
-  for (int32_t val : this->temp_.get_data()) {
-    bool level = val >= 0;
-    if (!level)
-      val = -val;
-    val = this->from_microseconds_(static_cast<uint32_t>(val));
-
-    do {
-      int32_t item = std::min(val, int32_t(32767));
-      val -= item;
-
-      if (rmt_i % 2 == 0) {
-        rmt_item.level0 = static_cast<uint32_t>(level ^ this->inverted_);
-        rmt_item.duration0 = static_cast<uint32_t>(item);
-      } else {
-        rmt_item.level1 = static_cast<uint32_t>(level ^ this->inverted_);
-        rmt_item.duration1 = static_cast<uint32_t>(item);
-        this->rmt_temp_.push_back(rmt_item);
-      }
-      rmt_i++;
-    } while (val != 0);
+  // encode wait time at the start of the buffer to simplify the encoder callback
+  send_wait = this->from_microseconds_(static_cast<uint32_t>(send_wait));
+  while (send_wait > 0) {
+    int32_t duration = std::min(send_wait, int32_t(32767));
+    this->rmt_temp_.push_back({
+        .level = this->eot_level_,
+        .duration = duration,
+    });
+    send_wait -= duration;
   }
 
-  if (rmt_i % 2 == 1) {
-    rmt_item.level1 = 0;
-    rmt_item.duration1 = 0;
-    this->rmt_temp_.push_back(rmt_item);
+  // encode data
+  size_t offset = this->rmt_temp_.size();
+  for (int32_t value : this->temp_.get_data()) {
+    bool level = value >= 0;
+    if (!level) {
+      value = -value;
+    }
+    value = this->from_microseconds_(static_cast<uint32_t>(value));
+    while (value > 0) {
+      int32_t duration = std::min(value, int32_t(32767));
+      this->rmt_temp_.push_back({
+          .level = level ^ this->inverted_,
+          .duration = duration,
+      });
+      value -= duration;
+    }
   }
 
-  if ((this->rmt_temp_.data() == nullptr) || this->rmt_temp_.empty()) {
+  if ((this->rmt_temp_.data() == nullptr) || this->rmt_temp_.size() <= offset) {
     ESP_LOGE(TAG, "Empty data");
     return;
   }
@@ -245,11 +239,10 @@ void RemoteTransmitterComponent::send_internal(uint32_t send_times, uint32_t sen
   memset(&config, 0, sizeof(config));
   config.flags.eot_level = this->eot_level_;
   memset(&this->store_, 0, sizeof(this->store_));
-  this->store_.eot_level = this->eot_level_;
-  this->store_.send_times = send_times;
-  this->store_.send_wait = this->from_microseconds_(send_wait);
+  this->store_.times = send_times;
+  this->store_.index = offset;  // skip send_wait the first time around
   esp_err_t error = rmt_transmit(this->channel_, this->encoder_, this->rmt_temp_.data(),
-                                 this->rmt_temp_.size() * sizeof(rmt_symbol_word_t), &config);
+                                 this->rmt_temp_.size() * sizeof(rmt_symbol_half_t), &config);
   if (error != ESP_OK) {
     ESP_LOGW(TAG, "rmt_transmit failed: %s", esp_err_to_name(error));
     this->status_set_warning();

@@ -13,11 +13,16 @@ namespace esphome {
 namespace remote_transmitter {
 
 #if defined(USE_ESP32) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 1)
+typedef union {
+  struct {
+    uint16_t duration : 15; /*!< Duration */
+    uint16_t level : 1;     /*!< Level */
+  };
+  uint16_t value; /*!< Equivalent unsigned value for the RMT symbol half */
+} rmt_symbol_half_t;
+
 struct RemoteTransmitterComponentStore {
-  bool eot_level{false};
-  uint32_t send_times{0};
-  uint32_t send_wait{0};
-  uint32_t delay{0};
+  uint32_t times{0};
   uint32_t index{0};
 };
 #endif
@@ -71,7 +76,7 @@ class RemoteTransmitterComponent : public remote_base::RemoteTransmitterBase,
 #endif
   uint32_t current_carrier_frequency_{38000};
   bool initialized_{false};
-  std::vector<rmt_symbol_word_t> rmt_temp_;
+  std::vector<rmt_symbol_half_t> rmt_temp_;
   bool with_dma_{false};
   bool eot_level_{false};
   rmt_channel_handle_t channel_{NULL};
