@@ -1,6 +1,7 @@
 #ifdef USE_ESP_IDF
 
 #include "i2c_bus_esp_idf.h"
+#include "i2c.h"
 
 #include <driver/gpio.h>
 #include <cinttypes>
@@ -115,12 +116,34 @@ void IDFI2CBus::dump_config() {
 }
 
 ErrorCode IDFI2CBus::write_readv(uint8_t address, const uint8_t *write_buffer, size_t write_count, uint8_t *read_buffer,
-                                 size_t read_count) {
+                                 size_t read_count, const I2CDevice *device) {
   // logging is only enabled with v level, if warnings are shown the caller
   // should log them
   if (!initialized_) {
     ESP_LOGW(TAG, "i2c bus not initialized!");
     return ERROR_NOT_INITIALIZED;
+  }
+
+  // Determine which device handle to use
+  i2c_master_dev_handle_t dev_handle = this->dev_;
+  if (device != nullptr && device->frequency_ != 0) {
+    // Device has custom frequency, ensure it has its own handle
+    if (device->dev_ == nullptr) {
+      // Create device-specific handle
+      i2c_device_config_t dev_conf{};
+      memset(&dev_conf, 0, sizeof(dev_conf));
+      dev_conf.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+      dev_conf.device_address = address;
+      dev_conf.scl_speed_hz = device->frequency_;
+      dev_conf.scl_wait_us = this->timeout_;
+      esp_err_t err =
+          i2c_master_bus_add_device(this->bus_, &dev_conf, const_cast<i2c_master_dev_handle_t *>(&device->dev_));
+      if (err != ESP_OK) {
+        ESP_LOGW(TAG, "i2c_master_bus_add_device failed for device 0x%02X: %s", address, esp_err_to_name(err));
+        return ERROR_UNKNOWN;
+      }
+    }
+    dev_handle = device->dev_;
   }
 
   i2c_operation_job_t jobs[8]{};
@@ -170,7 +193,7 @@ ErrorCode IDFI2CBus::write_readv(uint8_t address, const uint8_t *write_buffer, s
   }
   jobs[num_jobs++].command = I2C_MASTER_CMD_STOP;
   ESP_LOGV(TAG, "Sending %zu jobs", num_jobs);
-  esp_err_t err = i2c_master_execute_defined_operations(this->dev_, jobs, num_jobs, 20);
+  esp_err_t err = i2c_master_execute_defined_operations(dev_handle, jobs, num_jobs, 20);
   if (err == ESP_ERR_INVALID_STATE) {
     ESP_LOGV(TAG, "TX to %02X failed: not acked", address);
     return ERROR_NOT_ACKNOWLEDGED;

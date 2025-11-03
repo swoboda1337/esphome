@@ -1,6 +1,7 @@
 #ifdef USE_ARDUINO
 
 #include "i2c_bus_arduino.h"
+#include "i2c.h"
 #include <Arduino.h>
 #include <cstring>
 #include "esphome/core/application.h"
@@ -112,13 +113,21 @@ void ArduinoI2CBus::dump_config() {
 }
 
 ErrorCode ArduinoI2CBus::write_readv(uint8_t address, const uint8_t *write_buffer, size_t write_count,
-                                     uint8_t *read_buffer, size_t read_count) {
+                                     uint8_t *read_buffer, size_t read_count, const I2CDevice *device) {
 #if defined(USE_ESP8266)
   this->set_pins_and_clock_();  // reconfigure Wire global state in case there are multiple instances
 #endif
   if (!initialized_) {
     ESP_LOGD(TAG, "i2c bus not initialized!");
     return ERROR_NOT_INITIALIZED;
+  }
+
+  // Set device-specific frequency if provided
+  if (device != nullptr && device->frequency_ != 0) {
+    wire_->setClock(device->frequency_);
+  } else if (device == nullptr || device->frequency_ == 0) {
+    // Restore bus default frequency
+    wire_->setClock(frequency_);
   }
 
   ESP_LOGV(TAG, "0x%02X TX %s", address, format_hex_pretty(write_buffer, write_count).c_str());

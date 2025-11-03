@@ -11,6 +11,8 @@
 namespace esphome {
 namespace i2c {
 
+class I2CDevice;  // forward declaration
+
 /// @brief Helper class for efficient buffer allocation - uses stack for small sizes, heap for large
 template<size_t STACK_SIZE> class SmallBufferWithHeapFallback {
  public:
@@ -68,11 +70,12 @@ class I2CBus {
   /// @param write_count number of bytes to write
   /// @param read_buffer pointer to an array to receive data
   /// @param read_count number of bytes to read
+  /// @param device optional pointer to the I2CDevice for per-device configuration (frequency, etc.)
   /// transmission. False will send a restart, keeping the connection active.
   /// @return an i2c::ErrorCode
   /// @details This is a pure virtual method that must be implemented in the subclass.
   virtual ErrorCode write_readv(uint8_t address, const uint8_t *write_buffer, size_t write_count, uint8_t *read_buffer,
-                                size_t read_count) = 0;
+                                size_t read_count, const I2CDevice *device = nullptr) = 0;
 
   // Legacy functions for compatibility
 

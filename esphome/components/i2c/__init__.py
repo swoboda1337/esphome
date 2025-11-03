@@ -96,11 +96,13 @@ async def to_code(config):
         cg.add_library("Wire", None)
 
 
-def i2c_device_schema(default_address):
+def i2c_device_schema(default_address, *, default_frequency=0):
     """Create a schema for a i2c device.
 
     :param default_address: The default address of the i2c device, can be None to represent
       a required option.
+    :param default_frequency: Optional default frequency for the device, if not specified
+      the device will use the bus frequency.
     :return: The i2c device schema, `extend` this in your config schema.
     """
     schema = {
@@ -108,6 +110,9 @@ def i2c_device_schema(default_address):
         cv.Optional("multiplexer"): cv.invalid(
             "This option has been removed, please see "
             "the tca9584a docs for the updated way to use multiplexers"
+        ),
+        cv.Optional(CONF_FREQUENCY, default=default_frequency): cv.All(
+            cv.frequency, cv.Range(min=0, min_included=False)
         ),
     }
     if default_address is None:
@@ -127,6 +132,7 @@ async def register_i2c_device(var, config):
     parent = await cg.get_variable(config[CONF_I2C_ID])
     cg.add(var.set_i2c_bus(parent))
     cg.add(var.set_i2c_address(config[CONF_ADDRESS]))
+    cg.add(var.set_i2c_frequency(config[CONF_FREQUENCY]))
 
 
 def final_validate_device_schema(

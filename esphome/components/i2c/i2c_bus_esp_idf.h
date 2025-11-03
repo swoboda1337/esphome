@@ -20,7 +20,7 @@ class IDFI2CBus : public InternalI2CBus, public Component {
   void setup() override;
   void dump_config() override;
   ErrorCode write_readv(uint8_t address, const uint8_t *write_buffer, size_t write_count, uint8_t *read_buffer,
-                        size_t read_count) override;
+                        size_t read_count, const I2CDevice *device = nullptr) override;
   float get_setup_priority() const override { return setup_priority::BUS; }
 
   void set_scan(bool scan) { this->scan_ = scan; }
@@ -32,6 +32,8 @@ class IDFI2CBus : public InternalI2CBus, public Component {
   void set_timeout(uint32_t timeout) { this->timeout_ = timeout; }
 
   int get_port() const override { return this->port_; }
+
+  i2c_master_bus_handle_t get_bus_handle() const { return this->bus_; }
 
  private:
   void recover_();

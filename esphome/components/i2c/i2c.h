@@ -1,5 +1,8 @@
 #pragma once
 
+#ifdef USE_ESP_IDF
+#include <driver/i2c_master.h>
+#endif
 #include <array>
 #include <vector>
 #include "esphome/core/helpers.h"
@@ -147,6 +150,10 @@ class I2CDevice {
   /// @param bus pointer to the I2CBus object
   void set_i2c_bus(I2CBus *bus) { bus_ = bus; }
 
+  /// @brief Set the I2C frequency for this specific device
+  /// @param frequency The frequency in Hz (e.g., 100000 for 100kHz)
+  void set_i2c_frequency(uint32_t frequency) { frequency_ = frequency; }
+
   /// @brief calls the I2CRegister constructor
   /// @param a_register address of the I²C register
   /// @return an I2CRegister proxy object
@@ -161,7 +168,9 @@ class I2CDevice {
   /// @param data pointer to an array to store the bytes
   /// @param len length of the buffer = number of bytes to read
   /// @return an i2c::ErrorCode
-  ErrorCode read(uint8_t *data, size_t len) const { return bus_->write_readv(this->address_, nullptr, 0, data, len); }
+  ErrorCode read(uint8_t *data, size_t len) const {
+    return bus_->write_readv(this->address_, nullptr, 0, data, len, this);
+  }
 
   /// @brief reads an array of bytes from a specific register in the I²C device
   /// @param a_register an 8 bits internal address of the I²C register to read from
@@ -182,7 +191,7 @@ class I2CDevice {
   /// @param len length of the buffer = number of bytes to write
   /// @return an i2c::ErrorCode
   ErrorCode write(const uint8_t *data, size_t len) const {
-    return bus_->write_readv(this->address_, data, len, nullptr, 0);
+    return bus_->write_readv(this->address_, data, len, nullptr, 0, this);
   }
 
   /// @brief writes an array of bytes to a device, then reads an array, as a single transaction
@@ -192,7 +201,7 @@ class I2CDevice {
   /// @param read_len length of the buffer = number of bytes to read
   /// @return an i2c::ErrorCode
   ErrorCode write_read(const uint8_t *write_data, size_t write_len, uint8_t *read_data, size_t read_len) const {
-    return bus_->write_readv(this->address_, write_data, write_len, read_data, read_len);
+    return bus_->write_readv(this->address_, write_data, write_len, read_data, read_len, this);
   }
 
   /// @brief writes an array of bytes to a specific register in the I²C device
@@ -299,8 +308,15 @@ class I2CDevice {
   }
 
  protected:
+  friend class I2CBus;
+
   uint8_t address_{0x00};  ///< store the address of the device on the bus
   I2CBus *bus_{nullptr};   ///< pointer to I2CBus instance
+  uint32_t frequency_{0};  ///< I2C frequency for this device (0 = use bus default)
+
+#ifdef USE_ESP_IDF
+  i2c_master_dev_handle_t dev_{};  ///< I2C device handle for ESP-IDF
+#endif
 };
 
 }  // namespace i2c
