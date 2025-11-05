@@ -752,6 +752,43 @@ class SchemaValidationStep(ConfigValidationStep):
                 # Remove 'platform' key for validation
                 input_conf = OrderedDict(self.conf)
                 platform_val = input_conf.pop("platform")
+
+                # Also remove 'id' if it's not in the schema
+                # This allows !remove to work on platforms that don't need IDs
+                if CONF_ID in input_conf and self.comp.config_schema is not None:
+                    # Check if CONF_ID is in the schema by looking for it in schema keys
+                    schema_has_id = False
+                    # Access the underlying schema dict from the _Schema wrapper
+                    schema_dict = getattr(
+                        self.comp.config_schema, "schema", self.comp.config_schema
+                    )
+
+                    # Unwrap vol.All validators to get to the actual schema dict
+                    if isinstance(schema_dict, vol.All):
+                        # vol.All contains multiple validators, find the first Schema/dict validator
+                        for validator in schema_dict.validators:
+                            validator_schema = getattr(validator, "schema", validator)
+                            if isinstance(validator_schema, dict):
+                                schema_dict = validator_schema
+                                break
+
+                    # Check if the schema contains CONF_ID
+                    if isinstance(schema_dict, dict):
+                        for schema_key in schema_dict:
+                            # Check both direct CONF_ID and vol.Marker wrappers (like cv.GenerateID, cv.Required, cv.Optional)
+                            if isinstance(schema_key, vol.Marker):
+                                # Check if this marker wraps CONF_ID (works for GenerateID, Required, Optional, etc.)
+                                if getattr(schema_key, "schema", None) == CONF_ID:
+                                    schema_has_id = True
+                                    break
+                            elif schema_key == CONF_ID:
+                                schema_has_id = True
+                                break
+
+                    # Only strip the ID if it's not in the schema
+                    if not schema_has_id:
+                        input_conf.pop(CONF_ID)
+
                 schema = cv.Schema(self.comp.config_schema)
                 validated = schema(input_conf)
                 # Ensure result is OrderedDict so we can call move_to_end

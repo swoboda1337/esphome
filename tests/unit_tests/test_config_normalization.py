@@ -113,3 +113,33 @@ def test_ota_with_platform_list_and_captive_portal(fixtures_dir: Path) -> None:
     platforms = {p.get("platform") for p in result["ota"]}
     assert "esphome" in platforms, f"Expected esphome platform in {platforms}"
     assert "web_server" in platforms, f"Expected web_server platform in {platforms}"
+
+
+def test_platform_config_strips_unused_id(fixtures_dir: Path) -> None:
+    """Test that platforms without id in schema can have id stripped for !remove functionality."""
+    config_file = fixtures_dir / "wifi_info_with_id.yaml"
+    CORE.config_path = config_file
+
+    raw_config = yaml_util.load_yaml(config_file)
+    result = config.validate_config(raw_config, {})
+
+    # The config should validate successfully even though wifi_info doesn't have id in its schema
+    # The id field should be silently stripped during validation
+    assert not result.errors, f"Expected no errors, but got: {result.errors}"
+    assert "text_sensor" in result
+
+
+def test_platform_config_allows_remove_with_id(fixtures_dir: Path) -> None:
+    """Test that !remove works on platforms that have id field for merge/include use case."""
+    config_file = fixtures_dir / "wifi_info_remove_test.yaml"
+    CORE.config_path = config_file
+
+    raw_config = yaml_util.load_yaml(config_file)
+    result = config.validate_config(raw_config, {})
+
+    # The config should validate successfully and the wifi_info platform should be removed
+    assert not result.errors, f"Expected no errors, but got: {result.errors}"
+    assert "text_sensor" in result
+    # wifi_info should have been removed, so text_sensor list should be empty
+    assert isinstance(result["text_sensor"], list)
+    assert len(result["text_sensor"]) == 0

@@ -1,0 +1,20 @@
+esphome:
+  name: test-device
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: "test_ssid"
+  password: "test_password"
+
+# wifi_info platform with an id field
+# Even though wifi_info doesn't define id in its schema,
+# this should validate successfully (id is stripped)
+text_sensor:
+  - platform: wifi_info
+    id: wifi_info_id
+    ip_address:
+      name: IP Address

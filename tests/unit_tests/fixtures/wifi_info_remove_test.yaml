@@ -1,0 +1,28 @@
+esphome:
+  name: test-device
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: "test_ssid"
+  password: "test_password"
+
+# Define packages that include wifi_info
+packages:
+  common_config:
+    text_sensor:
+      - platform: wifi_info
+        id: wifi_info_id
+        ip_address:
+          name: IP Address
+        ssid:
+          name: SSID
+
+# Now remove wifi_info using !remove
+# This simulates the use case where you have a common config with WiFi
+# but want to remove it on devices using Ethernet
+text_sensor:
+  - id: !remove wifi_info_id
