@@ -213,12 +213,25 @@ int HttpContainerIDF::read(uint8_t *buf, size_t max_len) {
   const uint32_t start = millis();
   watchdog::WatchdogManager wdm(this->parent_->get_watchdog_timeout());
 
+  size_t bufsize = max_len;
+
+  // If content_length is known (non-zero), limit reads to remaining bytes
+  if (this->content_length > 0) {
+    size_t remaining = this->content_length - this->bytes_read_;
+    if (remaining == 0) {
+      this->duration_ms += (millis() - start);
+      return 0;
+    }
+    bufsize = std::min(max_len, remaining);
+  }
+
   this->feed_wdt();
   int read_len = esp_http_client_read(this->client_, (char *) buf, max_len);
   this->feed_wdt();
   if (read_len > 0) {
     this->bytes_read_ += read_len;
   }
+
   this->duration_ms += (millis() - start);
 
   return read_len;
@@ -230,6 +243,8 @@ void HttpContainerIDF::end() {
   esp_http_client_close(this->client_);
   esp_http_client_cleanup(this->client_);
 }
+
+bool HttpContainerIDF::is_complete_data_received() { return esp_http_client_is_complete_data_received(this->client_); }
 
 void HttpContainerIDF::feed_wdt() {
   // Tests to see if the executing task has a watchdog timer attached

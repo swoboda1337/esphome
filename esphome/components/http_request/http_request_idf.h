@@ -20,6 +20,9 @@ class HttpContainerIDF : public HttpContainer {
   /// @brief Feeds the watchdog timer if the executing task has one attached
   void feed_wdt();
 
+  /// @brief Checks if all data has been received (works for chunked and content-length responses)
+  bool is_complete_data_received() override;
+
   void set_response_headers(std::map<std::string, std::list<std::string>> &response_headers) {
     this->response_headers_ = std::move(response_headers);
   }
