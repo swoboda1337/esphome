@@ -27,6 +27,8 @@ class HttpContainerIDF : public HttpContainer {
     this->response_headers_ = std::move(response_headers);
   }
 
+  void set_client(esp_http_client_handle_t client) { this->client_ = client; }
+
  protected:
   esp_http_client_handle_t client_;
 };

@@ -18,6 +18,9 @@ namespace esphome::http_request {
 
 static const char *const TAG = "http_request.idf";
 
+// Maximum attempts to fetch headers when server returns EAGAIN (e.g., during TTS generation)
+static const uint8_t MAX_HEADER_FETCH_RETRIES = 6;
+
 struct UserData {
   const std::set<std::string> &collect_headers;
   std::map<std::string, std::list<std::string>> response_headers;
@@ -153,6 +156,41 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::perform(const std::string &url, c
 
   container->feed_wdt();
   container->content_length = esp_http_client_fetch_headers(client);
+
+  // Retry header fetch if server returns EAGAIN (e.g., still generating TTS audio)
+  uint8_t header_retries = 0;
+  while ((container->content_length < 0) && (header_retries < MAX_HEADER_FETCH_RETRIES)) {
+    container->feed_wdt();
+    if (container->content_length != -ESP_ERR_HTTP_EAGAIN) {
+      // Serious error, no recovery possible
+      break;
+    }
+
+    // Reconnect from fresh state to work
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    client = esp_http_client_init(&config);
+    if (client == nullptr) {
+      this->status_momentary_error("failed", 1000);
+      ESP_LOGE(TAG, "Failed to reinitialize HTTP client during retry");
+      return nullptr;
+    }
+    container->set_client(client);
+    for (const auto &header : request_headers) {
+      esp_http_client_set_header(client, header.name.c_str(), header.value.c_str());
+    }
+    err = esp_http_client_open(client, body_len);
+    if (err != ESP_OK) {
+      this->status_momentary_error("failed", 1000);
+      ESP_LOGE(TAG, "HTTP Request failed during retry: %s", esp_err_to_name(err));
+      esp_http_client_cleanup(client);
+      return nullptr;
+    }
+    container->feed_wdt();
+    container->content_length = esp_http_client_fetch_headers(client);
+    ++header_retries;
+  }
+
   container->feed_wdt();
   container->status_code = esp_http_client_get_status_code(client);
   container->feed_wdt();
