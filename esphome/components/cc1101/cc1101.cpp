@@ -8,6 +8,9 @@ namespace esphome::cc1101 {
 
 static const char *const TAG = "cc1101";
 
+// Frequency offset step: Fxosc / 2^14 = 26MHz / 16384 ≈ 1587 Hz per FREQEST unit
+static constexpr float FREQEST_STEP = 26000000.0f / 16384.0f;
+
 static void split_float(float value, int mbits, uint8_t &e, uint32_t &m) {
   int e_tmp;
   float m_tmp = std::frexp(value, &e_tmp);
@@ -157,11 +160,22 @@ void CC1101Component::loop() {
 
   // Periodic RX state watchdog - verify CC1101 is still in RX mode
   uint32_t now = millis();
-  if (now - this->last_rx_check_ > 10000) {
+  if (now - this->last_rx_check_ > 60000) {  // Check every 60 seconds
     this->last_rx_check_ = now;
     this->read_(Register::MARCSTATE);
+    this->read_(Register::FREQEST);
+    this->read_(Register::PKTSTATUS);
+    this->read_(Register::RSSI);
+    float freq_offset = static_cast<int8_t>(this->state_.FREQEST) * FREQEST_STEP;
+    float rssi = (this->state_.RSSI * RSSI_STEP) - RSSI_OFFSET;
+
+    // Always log status
+    ESP_LOGD(TAG, "CC1101 status: MARCSTATE=0x%02X, Freq offset: %.1f Hz, RSSI: %.1f dBm, PKTSTATUS: 0x%02X",
+             this->state_.MARC_STATE, freq_offset, rssi, this->state_.PKTSTATUS);
+
+    // Recover if not in RX state
     if (this->state_.MARC_STATE != static_cast<uint8_t>(State::RX)) {
-      ESP_LOGW(TAG, "CC1101 not in RX state (MARCSTATE=0x%02X), recovering", this->state_.MARC_STATE);
+      ESP_LOGW(TAG, "CC1101 not in RX state, recovering");
       this->enter_idle_();
       this->strobe_(Command::FRX);
       this->strobe_(Command::RX);
@@ -217,9 +231,13 @@ void CC1101Component::loop() {
   // Read status from registers (more reliable than FIFO status bytes due to timing issues)
   this->read_(Register::RSSI);
   this->read_(Register::LQI);
+  this->read_(Register::FREQEST);
   float rssi = (this->state_.RSSI * RSSI_STEP) - RSSI_OFFSET;
   bool crc_ok = (this->state_.LQI & STATUS_CRC_OK_MASK) != 0;
   uint8_t lqi = this->state_.LQI & STATUS_LQI_MASK;
+  float freq_offset = static_cast<int8_t>(this->state_.FREQEST) * FREQEST_STEP;
+  ESP_LOGV(TAG, "Packet: %u bytes, RSSI: %.1f dBm, LQI: %u, Freq offset: %.1f Hz, CRC: %s", payload_length, rssi, lqi,
+           freq_offset, crc_ok ? "OK" : "FAIL");
   if (this->state_.CRC_EN == 0 || crc_ok) {
     this->packet_trigger_->trigger(this->packet_, rssi, lqi);
   }
