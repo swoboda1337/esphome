@@ -92,6 +92,9 @@ class CC1101Component : public Component,
   Trigger<std::vector<uint8_t>, float, uint8_t> *packet_trigger_{new Trigger<std::vector<uint8_t>, float, uint8_t>()};
   std::vector<uint8_t> packet_;
 
+  // RX state watchdog
+  uint32_t last_rx_check_{0};
+
   // Low-level Helpers
   uint8_t strobe_(Command cmd);
   void write_(Register reg);

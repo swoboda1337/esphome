@@ -150,8 +150,30 @@ void CC1101Component::setup() {
 }
 
 void CC1101Component::loop() {
-  if (this->state_.PKT_FORMAT != static_cast<uint8_t>(PacketFormat::PACKET_FORMAT_FIFO) || this->gdo0_pin_ == nullptr ||
-      !this->gdo0_pin_->digital_read()) {
+  // Only process in packet mode with GDO0 configured
+  if (this->state_.PKT_FORMAT != static_cast<uint8_t>(PacketFormat::PACKET_FORMAT_FIFO) || this->gdo0_pin_ == nullptr) {
+    return;
+  }
+
+  // Periodic RX state watchdog - verify CC1101 is still in RX mode
+  uint32_t now = millis();
+  if (now - this->last_rx_check_ > 10000) {
+    this->last_rx_check_ = now;
+    this->read_(Register::MARCSTATE);
+    if (this->state_.MARC_STATE != static_cast<uint8_t>(State::RX)) {
+      ESP_LOGW(TAG, "CC1101 not in RX state (MARCSTATE=0x%02X), recovering", this->state_.MARC_STATE);
+      this->enter_idle_();
+      this->strobe_(Command::FRX);
+      this->strobe_(Command::RX);
+      if (!this->wait_for_state_(State::RX)) {
+        ESP_LOGE(TAG, "Failed to enter RX state, performing full reset");
+        this->reset();
+      }
+    }
+  }
+
+  // Check for packet ready (GDO0 high)
+  if (!this->gdo0_pin_->digital_read()) {
     return;
   }
 
@@ -164,7 +186,9 @@ void CC1101Component::loop() {
     this->enter_idle_();
     this->strobe_(Command::FRX);
     this->strobe_(Command::RX);
-    this->wait_for_state_(State::RX);
+    if (!this->wait_for_state_(State::RX)) {
+      ESP_LOGE(TAG, "Failed to enter RX state after overflow recovery");
+    }
     return;
   }
 
@@ -182,7 +206,9 @@ void CC1101Component::loop() {
     this->enter_idle_();
     this->strobe_(Command::FRX);
     this->strobe_(Command::RX);
-    this->wait_for_state_(State::RX);
+    if (!this->wait_for_state_(State::RX)) {
+      ESP_LOGE(TAG, "Failed to enter RX state after invalid packet");
+    }
     return;
   }
   this->packet_.resize(payload_length);
@@ -202,7 +228,9 @@ void CC1101Component::loop() {
   this->enter_idle_();
   this->strobe_(Command::FRX);
   this->strobe_(Command::RX);
-  this->wait_for_state_(State::RX);
+  if (!this->wait_for_state_(State::RX)) {
+    ESP_LOGE(TAG, "Failed to enter RX state after packet processing");
+  }
 }
 
 void CC1101Component::dump_config() {
