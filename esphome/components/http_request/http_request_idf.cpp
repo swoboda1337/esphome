@@ -155,13 +155,13 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::perform(const std::string &url, c
   }
 
   container->feed_wdt();
-  container->content_length = esp_http_client_fetch_headers(client);
+  int64_t content_length = esp_http_client_fetch_headers(client);
 
   // Retry header fetch if server returns EAGAIN (e.g., still generating TTS audio)
   uint8_t header_retries = 0;
-  while ((container->content_length < 0) && (header_retries < MAX_HEADER_FETCH_RETRIES)) {
+  while ((content_length < 0) && (header_retries < MAX_HEADER_FETCH_RETRIES)) {
     container->feed_wdt();
-    if (container->content_length != -ESP_ERR_HTTP_EAGAIN) {
+    if (content_length != -ESP_ERR_HTTP_EAGAIN) {
       // Serious error, no recovery possible
       break;
     }
@@ -187,9 +187,10 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::perform(const std::string &url, c
       return nullptr;
     }
     container->feed_wdt();
-    container->content_length = esp_http_client_fetch_headers(client);
+    content_length = esp_http_client_fetch_headers(client);
     ++header_retries;
   }
+  container->content_length = content_length;
 
   container->feed_wdt();
   container->status_code = esp_http_client_get_status_code(client);
