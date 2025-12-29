@@ -166,12 +166,20 @@ void CC1101Component::loop() {
     this->read_(Register::FREQEST);
     this->read_(Register::PKTSTATUS);
     this->read_(Register::RSSI);
+    this->read_(Register::IOCFG0);
     float freq_offset = static_cast<int8_t>(this->state_.FREQEST) * FREQEST_STEP;
     float rssi = (this->state_.RSSI * RSSI_STEP) - RSSI_OFFSET;
 
     // Always log status
     ESP_LOGD(TAG, "CC1101 status: MARCSTATE=0x%02X, Freq offset: %.1f Hz, RSSI: %.1f dBm, PKTSTATUS: 0x%02X",
              this->state_.MARC_STATE, freq_offset, rssi, this->state_.PKTSTATUS);
+
+    // Check if GDO0 config got corrupted
+    if (this->state_.GDO0_CFG != 0x01) {
+      ESP_LOGW(TAG, "GDO0 config corrupted (0x%02X), fixing", this->state_.GDO0_CFG);
+      this->state_.GDO0_CFG = 0x01;
+      this->write_(Register::IOCFG0);
+    }
 
     // Recover if not in RX state
     if (this->state_.MARC_STATE != static_cast<uint8_t>(State::RX)) {
