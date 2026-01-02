@@ -794,6 +794,10 @@ class EsphomeCore:
 
     @property
     def using_arduino(self):
+        if self.is_esp32:
+            from esphome.components.esp32.const import KEY_ESP32, KEY_USING_ARDUINO
+
+            return self.data.get(KEY_ESP32, {}).get(KEY_USING_ARDUINO, False)
         return self.target_framework == "arduino"
 
     @property

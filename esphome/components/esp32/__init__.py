@@ -56,6 +56,7 @@ from .const import (  # noqa
     KEY_REF,
     KEY_REPO,
     KEY_SDKCONFIG_OPTIONS,
+    KEY_USING_ARDUINO,
     KEY_VARIANT,
     VARIANT_ESP32,
     VARIANT_ESP32C2,
@@ -185,6 +186,11 @@ def set_core_data(config):
     CORE.data[KEY_ESP32][KEY_VARIANT] = variant
     CORE.data[KEY_ESP32][KEY_EXTRA_BUILD_FILES] = {}
 
+    # Check for Arduino - either via framework type or IDF component
+    CORE.data[KEY_ESP32][KEY_USING_ARDUINO] = (
+        conf[CONF_TYPE] == FRAMEWORK_ARDUINO or _get_arduino_component(conf) is not None
+    )
+
     return config
 
 
@@ -194,6 +200,14 @@ def get_esp32_variant(core_obj=None):
 
 def get_board(core_obj=None):
     return (core_obj or CORE).data[KEY_ESP32][KEY_BOARD]
+
+
+def _get_arduino_component(conf: ConfigType) -> ConfigType | None:
+    """Get Arduino IDF component config if present."""
+    for c in conf.get(CONF_COMPONENTS, []):
+        if c.get(CONF_NAME) == "espressif/arduino-esp32":
+            return c
+    return None
 
 
 def get_download_types(storage_json):
@@ -981,22 +995,17 @@ async def to_code(config):
             Path(__file__).parent / "iram_fix.py.script",
         )
 
+    # Check for Arduino as IDF component (espressif/arduino-esp32)
+    arduino_component = _get_arduino_component(conf)
+    use_arduino = conf[CONF_TYPE] == FRAMEWORK_ARDUINO or arduino_component
+
     if conf[CONF_TYPE] == FRAMEWORK_ESP_IDF:
         cg.add_platformio_option("framework", "espidf")
         cg.add_build_flag("-DUSE_ESP_IDF")
         cg.add_build_flag("-DUSE_ESP32_FRAMEWORK_ESP_IDF")
     else:
         cg.add_platformio_option("framework", "arduino, espidf")
-        cg.add_build_flag("-DUSE_ARDUINO")
         cg.add_build_flag("-DUSE_ESP32_FRAMEWORK_ARDUINO")
-        cg.add_define(
-            "USE_ARDUINO_VERSION_CODE",
-            cg.RawExpression(
-                f"VERSION_CODE({framework_ver.major}, {framework_ver.minor}, {framework_ver.patch})"
-            ),
-        )
-        add_idf_sdkconfig_option("CONFIG_MBEDTLS_PSK_MODES", True)
-        add_idf_sdkconfig_option("CONFIG_MBEDTLS_CERTIFICATE_BUNDLE", True)
 
         # Add IDF framework source for Arduino builds to ensure it uses the same version as
         # the ESP-IDF framework
@@ -1004,6 +1013,30 @@ async def to_code(config):
             cg.add_platformio_option(
                 "platform_packages", [_format_framework_espidf_version(idf_ver, None)]
             )
+
+    # Arduino support - either via framework type or IDF component
+    if use_arduino:
+        cg.add_build_flag("-DUSE_ARDUINO")
+        if arduino_component:
+            if match := re.search(
+                r"(\d+\.\d+\.\d+)", arduino_component.get(CONF_REF, "")
+            ):
+                arduino_ver = cv.Version.parse(match.group(1))
+            else:
+                raise cv.Invalid(
+                    "Could not parse Arduino version from espressif/arduino-esp32 component. "
+                    "Please specify a version like 'espressif/arduino-esp32==3.3.5'"
+                )
+        else:
+            arduino_ver = framework_ver
+        cg.add_define(
+            "USE_ARDUINO_VERSION_CODE",
+            cg.RawExpression(
+                f"VERSION_CODE({arduino_ver.major}, {arduino_ver.minor}, {arduino_ver.patch})"
+            ),
+        )
+        add_idf_sdkconfig_option("CONFIG_MBEDTLS_PSK_MODES", True)
+        add_idf_sdkconfig_option("CONFIG_MBEDTLS_CERTIFICATE_BUNDLE", True)
 
         # ESP32-S2 Arduino: Disable USB Serial on boot to avoid TinyUSB dependency
         if get_esp32_variant() == VARIANT_ESP32S2:
@@ -1075,7 +1108,7 @@ async def to_code(config):
     # When using Arduino with Ethernet, DHCP server functions must be available
     # for the Network library to compile, even if not actively used
     if advanced.get(CONF_ENABLE_LWIP_DHCP_SERVER) is False and not (
-        conf[CONF_TYPE] == FRAMEWORK_ARDUINO and "ethernet" in CORE.loaded_integrations
+        use_arduino and "ethernet" in CORE.loaded_integrations
     ):
         add_idf_sdkconfig_option("CONFIG_LWIP_DHCPS", False)
     if not advanced[CONF_ENABLE_LWIP_MDNS_QUERIES]:

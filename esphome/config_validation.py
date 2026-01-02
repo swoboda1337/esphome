@@ -696,7 +696,13 @@ def only_with_framework(
 only_on_esp32 = only_on(PLATFORM_ESP32)
 only_on_esp8266 = only_on(PLATFORM_ESP8266)
 only_on_rp2040 = only_on(PLATFORM_RP2040)
-only_with_arduino = only_with_framework(Framework.ARDUINO)
+
+
+def only_with_arduino(obj):
+    """Validate that this option can only be used with Arduino framework."""
+    if not CORE.using_arduino:
+        raise Invalid("This feature is only available with the Arduino framework")
+    return obj
 
 
 def only_with_esp_idf(obj):
@@ -706,7 +712,9 @@ def only_with_esp_idf(obj):
         "ESP32 Arduino builds on top of ESP-IDF, so ESP-IDF features are available in both frameworks. "
         "Use cv.only_on_esp32 and/or cv.only_with_arduino instead."
     )
-    return only_with_framework(Framework.ESP_IDF)(obj)
+    if not CORE.using_esp_idf:
+        raise Invalid("This feature is only available with the ESP-IDF framework")
+    return obj
 
 
 # Adapted from:
