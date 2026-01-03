@@ -16,7 +16,7 @@ void UltrasonicSensorComponent::setup() {
   this->echo_isr_ = this->echo_pin_->to_isr();
 }
 
-uint32_t IRAM_ATTR UltrasonicSensorComponent::measure_() {
+UltrasonicSensorComponent::MeasureResult IRAM_ATTR UltrasonicSensorComponent::measure_() {
   // Disable interrupts during the entire measurement to prevent WiFi stack
   // or other interrupts from disrupting the timing-critical polling loop.
   // Maximum lock duration is timeout_us_ + pulse_time_us_ (typically ~12-17ms for 2-3m range).
@@ -39,24 +39,28 @@ uint32_t IRAM_ATTR UltrasonicSensorComponent::measure_() {
     ;
   const uint32_t pulse_end = micros();
 
-  // Return 0 on timeout, otherwise return pulse duration
-  if (pulse_end - start >= this->timeout_us_) {
-    return 0;
-  }
-  return pulse_end - pulse_start;
+  return {start, pulse_start, pulse_end};
 }
 
 void UltrasonicSensorComponent::update() {
-  uint32_t pulse_us = this->measure_();
+  MeasureResult result = this->measure_();
 
-  if (pulse_us == 0) {
+  ESP_LOGD(TAG,
+           "'%s' - timeout_us: %" PRIu32 ", pulse_time_us: %" PRIu32 ", start: %" PRIu32 ", pulse_start: %" PRIu32
+           ", pulse_end: %" PRIu32,
+           this->name_.c_str(), this->timeout_us_, this->pulse_time_us_, result.start, result.pulse_start,
+           result.pulse_end);
+
+  uint32_t pulse_us = result.pulse_end - result.pulse_start;
+  bool timed_out = (result.pulse_end - result.start) >= this->timeout_us_;
+
+  if (timed_out) {
     ESP_LOGD(TAG, "'%s' - Distance measurement timed out!", this->name_.c_str());
     this->publish_state(NAN);
   } else {
-    ESP_LOGV(TAG, "Echo took %" PRIu32 "us", pulse_us);
-    float result = UltrasonicSensorComponent::us_to_m(pulse_us);
-    ESP_LOGD(TAG, "'%s' - Got distance: %.3f m", this->name_.c_str(), result);
-    this->publish_state(result);
+    float distance = UltrasonicSensorComponent::us_to_m(pulse_us);
+    ESP_LOGD(TAG, "'%s' - Got distance: %.3f m (echo: %" PRIu32 "us)", this->name_.c_str(), distance, pulse_us);
+    this->publish_state(distance);
   }
 }
 void UltrasonicSensorComponent::dump_config() {

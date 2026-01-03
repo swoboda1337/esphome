@@ -26,11 +26,17 @@ class UltrasonicSensorComponent : public sensor::Sensor, public PollingComponent
   float get_setup_priority() const override;
 
  protected:
+  struct MeasureResult {
+    uint32_t start;
+    uint32_t pulse_start;
+    uint32_t pulse_end;
+  };
+
   /// Helper function to convert the specified echo duration in µs to meters.
   static float us_to_m(uint32_t us);
 
   /// Perform the measurement with interrupts disabled. Must be in IRAM to avoid flash access delays.
-  uint32_t measure_();
+  MeasureResult measure_();
 
   InternalGPIOPin *trigger_pin_;
   InternalGPIOPin *echo_pin_;
