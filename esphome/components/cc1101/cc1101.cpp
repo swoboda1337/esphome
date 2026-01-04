@@ -191,7 +191,10 @@ void CC1101Component::loop() {
     this->read_(Register::AGCCTRL2);
     this->read_(Register::AGCCTRL1);
     this->read_(Register::AGCCTRL0);
+    this->read_(Register::FSCAL3);
+    this->read_(Register::FSCAL2);
     this->read_(Register::FSCAL1);
+    this->read_(Register::FSCAL0);
 
     // Read current GDO0 pin state from ESP side
     bool gdo0_gpio = this->gdo0_pin_->digital_read();
@@ -202,10 +205,13 @@ void CC1101Component::loop() {
     ESP_LOGW(TAG, "  FREQ=%02X%02X%02X SYNC=%02X%02X PKT0=%02X PKT1=%02X LEN=%02X FIFO=%02X", this->state_.FREQ2,
              this->state_.FREQ1, this->state_.FREQ0, this->state_.SYNC1, this->state_.SYNC0, this->state_.PKTCTRL0,
              this->state_.PKTCTRL1, this->state_.PKTLEN, this->state_.FIFOTHR);
-    ESP_LOGW(TAG, "  MDM432=%02X%02X%02X DEV=%02X FOC=%02X BS=%02X AGC=%02X%02X%02X FSCAL1=%02X GDO0=%02X",
-             this->state_.MDMCFG4, this->state_.MDMCFG3, this->state_.MDMCFG2, this->state_.DEVIATN,
-             this->state_.FOCCFG, this->state_.BSCFG, this->state_.AGCCTRL2, this->state_.AGCCTRL1,
-             this->state_.AGCCTRL0, this->state_.FSCAL1, this->state_.GDO0_CFG);
+    ESP_LOGW(TAG, "  MDM432=%02X%02X%02X DEV=%02X FOC=%02X BS=%02X AGC=%02X%02X%02X GDO0=%02X", this->state_.MDMCFG4,
+             this->state_.MDMCFG3, this->state_.MDMCFG2, this->state_.DEVIATN, this->state_.FOCCFG, this->state_.BSCFG,
+             this->state_.AGCCTRL2, this->state_.AGCCTRL1, this->state_.AGCCTRL0, this->state_.GDO0_CFG);
+    ESP_LOGW(TAG, "  FSCAL3=%02X FSCAL2=%02X (VCO_CORE_H_EN=%d) FSCAL1=%02X FSCAL0=%02X",
+             this->state_.regs()[static_cast<uint8_t>(Register::FSCAL3)],
+             this->state_.regs()[static_cast<uint8_t>(Register::FSCAL2)], this->state_.VCO_CORE_H_EN,
+             this->state_.FSCAL1, this->state_.FSCAL0);
 
     // Check if GDO0 config got corrupted
     if (this->state_.GDO0_CFG != 0x01) {
