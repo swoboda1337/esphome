@@ -94,6 +94,7 @@ class CC1101Component : public Component,
 
   // RX state watchdog
   uint32_t last_rx_check_{0};
+  uint32_t last_packet_time_{0};
 
   // Low-level Helpers
   uint8_t strobe_(Command cmd);

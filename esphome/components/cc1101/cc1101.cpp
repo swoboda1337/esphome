@@ -158,10 +158,12 @@ void CC1101Component::loop() {
     return;
   }
 
-  // Periodic RX state watchdog - verify CC1101 is still in RX mode
+  // RX watchdog - log diagnostics if no packet received in 50 seconds
   uint32_t now = millis();
-  if (now - this->last_rx_check_ > 60000) {  // Check every 60 seconds
+  if (now - this->last_packet_time_ >= 50000 && now - this->last_rx_check_ >= 10000) {
     this->last_rx_check_ = now;
+    ESP_LOGW(TAG, "No packet received in %u ms, checking registers", now - this->last_packet_time_);
+
     this->read_(Register::MARCSTATE);
     this->read_(Register::FREQEST);
     this->read_(Register::PKTSTATUS);
@@ -170,9 +172,40 @@ void CC1101Component::loop() {
     float freq_offset = static_cast<int8_t>(this->state_.FREQEST) * FREQEST_STEP;
     float rssi = (this->state_.RSSI * RSSI_STEP) - RSSI_OFFSET;
 
-    // Always log status
-    ESP_LOGD(TAG, "CC1101 status: MARCSTATE=0x%02X, Freq offset: %.1f Hz, RSSI: %.1f dBm, PKTSTATUS: 0x%02X",
-             this->state_.MARC_STATE, freq_offset, rssi, this->state_.PKTSTATUS);
+    // Read all config registers
+    this->read_(Register::FREQ2);
+    this->read_(Register::FREQ1);
+    this->read_(Register::FREQ0);
+    this->read_(Register::SYNC1);
+    this->read_(Register::SYNC0);
+    this->read_(Register::PKTCTRL0);
+    this->read_(Register::PKTCTRL1);
+    this->read_(Register::PKTLEN);
+    this->read_(Register::FIFOTHR);
+    this->read_(Register::MDMCFG4);
+    this->read_(Register::MDMCFG3);
+    this->read_(Register::MDMCFG2);
+    this->read_(Register::DEVIATN);
+    this->read_(Register::FOCCFG);
+    this->read_(Register::BSCFG);
+    this->read_(Register::AGCCTRL2);
+    this->read_(Register::AGCCTRL1);
+    this->read_(Register::AGCCTRL0);
+    this->read_(Register::FSCAL1);
+
+    // Read current GDO0 pin state from ESP side
+    bool gdo0_gpio = this->gdo0_pin_->digital_read();
+
+    // Log status
+    ESP_LOGW(TAG, "CC1101: MARC=0x%02X, RSSI=%.1f, FreqOff=%.0f Hz, PKT=0x%02X, GDO0=%d", this->state_.MARC_STATE, rssi,
+             freq_offset, this->state_.PKTSTATUS, gdo0_gpio);
+    ESP_LOGW(TAG, "  FREQ=%02X%02X%02X SYNC=%02X%02X PKT0=%02X PKT1=%02X LEN=%02X FIFO=%02X", this->state_.FREQ2,
+             this->state_.FREQ1, this->state_.FREQ0, this->state_.SYNC1, this->state_.SYNC0, this->state_.PKTCTRL0,
+             this->state_.PKTCTRL1, this->state_.PKTLEN, this->state_.FIFOTHR);
+    ESP_LOGW(TAG, "  MDM432=%02X%02X%02X DEV=%02X FOC=%02X BS=%02X AGC=%02X%02X%02X FSCAL1=%02X GDO0=%02X",
+             this->state_.MDMCFG4, this->state_.MDMCFG3, this->state_.MDMCFG2, this->state_.DEVIATN,
+             this->state_.FOCCFG, this->state_.BSCFG, this->state_.AGCCTRL2, this->state_.AGCCTRL1,
+             this->state_.AGCCTRL0, this->state_.FSCAL1, this->state_.GDO0_CFG);
 
     // Check if GDO0 config got corrupted
     if (this->state_.GDO0_CFG != 0x01) {
@@ -247,6 +280,7 @@ void CC1101Component::loop() {
   ESP_LOGV(TAG, "Packet: %u bytes, RSSI: %.1f dBm, LQI: %u, Freq offset: %.1f Hz, CRC: %s", payload_length, rssi, lqi,
            freq_offset, crc_ok ? "OK" : "FAIL");
   if (this->state_.CRC_EN == 0 || crc_ok) {
+    this->last_packet_time_ = millis();
     this->packet_trigger_->trigger(this->packet_, rssi, lqi);
   }
 
