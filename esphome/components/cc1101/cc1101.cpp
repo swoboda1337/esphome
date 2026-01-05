@@ -374,9 +374,35 @@ uint8_t CC1101Component::strobe_(Command cmd) {
   if (cmd < Command::RES || cmd > Command::NOP) {
     return 0xFF;
   }
-  this->enable();
-  uint8_t status_byte = this->transfer_byte(index);
-  this->disable();
+
+  uint8_t status_byte;
+  uint8_t retries = 3;
+
+  do {
+    this->enable();
+    status_byte = this->transfer_byte(index);
+    this->disable();
+
+    // Verify PLL lock after entering RX or TX mode.
+    // From datasheet: "The user can read register FSCAL1. The PLL is in lock if the register
+    // content is different from 0x3F. The PLL must be recalibrated until PLL lock is achieved
+    // if the PLL does not lock the first time."
+    if (cmd == Command::RX || cmd == Command::TX) {
+      this->wait_for_state_(cmd == Command::RX ? State::RX : State::TX);
+      this->read_(Register::FSCAL1);
+      if ((this->state_.FSCAL1 & 0x3F) == 0x3F) {
+        ESP_LOGW(TAG, "PLL lock failed (FSCAL1=0x%02X), retrying calibration (%d)", this->state_.FSCAL1, retries - 1);
+        this->enter_idle_();
+        continue;
+      }
+    }
+    break;
+  } while (--retries > 0);
+
+  if (retries == 0) {
+    ESP_LOGE(TAG, "PLL lock failed after retries");
+  }
+
   return status_byte;
 }
 
