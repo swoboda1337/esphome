@@ -9,6 +9,10 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/usb/usb_device.h>
 
+#ifdef USE_CRASH_LOG
+extern "C" void crash_log_write(const char *msg, size_t len);
+#endif
+
 namespace esphome::logger {
 
 static const char *const TAG = "logger";
@@ -70,6 +74,20 @@ void HOT Logger::write_msg_(const char *msg, size_t len) {
   // It is used for pyocd rtt -t nrf52840
   k_str_out(const_cast<char *>(msg), len);
 #endif
+#ifdef USE_CRASH_LOG
+  // Write to crash log buffer (survives warm resets)
+  crash_log_write(msg, len);
+#endif
+  if (this->uart_dev_ == nullptr) {
+    return;
+  }
+  for (size_t i = 0; i < len; ++i) {
+    uart_poll_out(this->uart_dev_, msg[i]);
+  }
+}
+
+void Logger::write_raw(const char *msg, size_t len) {
+  // Raw write - no crash_log hook to avoid recursion when dumping crash log
   if (this->uart_dev_ == nullptr) {
     return;
   }

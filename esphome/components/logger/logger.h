@@ -228,6 +228,10 @@ class Logger : public Component {
                     va_list args);  // NOLINT
 #endif
 
+ public:
+  // Write raw bytes to log output (no formatting, no crash_log hook)
+  void write_raw(const char *msg, size_t len);
+
  protected:
   void process_messages_();
   void write_msg_(const char *msg, size_t len);
