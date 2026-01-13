@@ -105,7 +105,7 @@ void ZigbeeComponent::zcl_device_cb(zb_bufid_t bufid) {
            attr_id, endpoint);
 
   // endpoints are enumerated from 1
-  if (global_zigbee->callbacks_.size() >= endpoint) {
+  if (global_zigbee->callbacks_.size() >= endpoint && global_zigbee->callbacks_[endpoint - 1]) {
     global_zigbee->callbacks_[endpoint - 1](bufid);
     return;
   }
@@ -224,10 +224,14 @@ static void send_attribute_report(zb_bufid_t bufid, zb_uint16_t cmd_id) {
   zb_buf_free(bufid);
 }
 
-void ZigbeeComponent::flush() { this->need_flush_ = true; }
+void ZigbeeComponent::flush() {
+  ESP_LOGD(TAG, "flush() called, setting need_flush_ = true");
+  this->need_flush_ = true;
+}
 
 void ZigbeeComponent::loop() {
   if (this->need_flush_) {
+    ESP_LOGD(TAG, "loop() processing need_flush_, calling zb_buf_get_out_delayed_ext");
     this->need_flush_ = false;
     zb_buf_get_out_delayed_ext(send_attribute_report, 0, 0);
   }

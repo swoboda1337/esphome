@@ -26,11 +26,12 @@ void ZigbeeSwitch::setup() {
   this->parent_->add_callback(this->endpoint_, [this](zb_bufid_t bufid) { this->zcl_device_cb_(bufid); });
   this->switch_->add_on_state_callback([this](bool state) {
     this->cluster_attributes_->present_value = state ? ZB_TRUE : ZB_FALSE;
-    ESP_LOGD(TAG, "Set attribute endpoint: %d, present_value %d", this->endpoint_,
+    ESP_LOGI(TAG, "Switch callback fired! endpoint: %d, present_value %d", this->endpoint_,
              this->cluster_attributes_->present_value);
     ZB_ZCL_SET_ATTRIBUTE(this->endpoint_, ZB_ZCL_CLUSTER_ID_BINARY_OUTPUT, ZB_ZCL_CLUSTER_SERVER_ROLE,
                          ZB_ZCL_ATTR_BINARY_OUTPUT_PRESENT_VALUE_ID, &this->cluster_attributes_->present_value,
                          ZB_FALSE);
+    ESP_LOGI(TAG, "Calling flush() for switch endpoint %d", this->endpoint_);
     this->parent_->flush();
   });
 }

@@ -17,11 +17,12 @@ ZigbeeBinarySensor::ZigbeeBinarySensor(binary_sensor::BinarySensor *binary_senso
 void ZigbeeBinarySensor::setup() {
   this->binary_sensor_->add_on_state_callback([this](bool state) {
     this->cluster_attributes_->present_value = state ? ZB_TRUE : ZB_FALSE;
-    ESP_LOGD(TAG, "Set attribute endpoint: %d, present_value %d", this->endpoint_,
+    ESP_LOGI(TAG, "Callback fired! endpoint: %d, present_value %d", this->endpoint_,
              this->cluster_attributes_->present_value);
     ZB_ZCL_SET_ATTRIBUTE(this->endpoint_, ZB_ZCL_CLUSTER_ID_BINARY_INPUT, ZB_ZCL_CLUSTER_SERVER_ROLE,
                          ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID, &this->cluster_attributes_->present_value,
                          ZB_FALSE);
+    ESP_LOGI(TAG, "Calling flush() for endpoint %d", this->endpoint_);
     this->parent_->flush();
   });
 }
