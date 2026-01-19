@@ -9,32 +9,31 @@ from typing import Any
 
 from esphome import codegen as cg, config_validation as cv
 from esphome.const import CONF_ITEMS
-from esphome.core import CORE, ID, Lambda
+from esphome.core import ID, Lambda
 from esphome.cpp_generator import LambdaExpression, MockObj
 from esphome.cpp_types import uint32
 from esphome.schema_extractors import SCHEMA_EXTRACT, schema_extractor
 from esphome.types import Expression, SafeExpType
 
-from .helpers import requires_component
+from .helpers import get_lvgl_data, requires_component
 
 LOGGER = logging.getLogger(__name__)
 lvgl_ns = cg.esphome_ns.namespace("lvgl")
 
-DOMAIN = "lvgl"
+# Keys for get_data() - maps to LvglData attributes
 KEY_LV_DEFINES = "lv_defines"
 KEY_UPDATED_WIDGETS = "updated_widgets"
 
 
 def get_data(key, default=None):
     """
-    Get a data structure from the global data store by key
-    :param key: A key for the data
-    :param default: The default data - the default is an empty dict
-    :return:
+    Get a data structure from the global data store by key.
+
+    :param key: A key for the data (maps to LvglData attribute)
+    :param default: Not used, kept for API compatibility
+    :return: The data dict for the given key
     """
-    return CORE.data.setdefault(DOMAIN, {}).setdefault(
-        key, default if default is not None else {}
-    )
+    return getattr(get_lvgl_data(), key)
 
 
 def add_define(macro, value="1"):

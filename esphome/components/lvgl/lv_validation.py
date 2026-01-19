@@ -33,13 +33,7 @@ from .defines import (
     call_lambda,
     literal,
 )
-from .helpers import (
-    CONF_IF_NAN,
-    add_lv_use,
-    esphome_fonts_used,
-    lv_fonts_used,
-    requires_component,
-)
+from .helpers import CONF_IF_NAN, add_lv_use, get_lvgl_data, requires_component
 from .types import lv_gradient_t
 
 opacity_consts = LvConstant("LV_OPA_", "TRANSP", "COVER")
@@ -350,13 +344,10 @@ def stop_value(value):
     return cv.int_range(0, 255)(value)
 
 
-lv_images_used = set()
-
-
 def image_validator(value):
     value = requires_component("image")(value)
     value = cv.use_id(Image_)(value)
-    lv_images_used.add(value)
+    get_lvgl_data().lv_images_used.add(value)
     add_lv_use("img", "label")
     return value
 
@@ -481,7 +472,7 @@ class LvFont(LValidator):
     def __init__(self):
         def lv_builtin_font(value):
             fontval = cv.one_of(*LV_FONTS, lower=True)(value)
-            lv_fonts_used.add(fontval)
+            get_lvgl_data().lv_fonts_used.add(fontval)
             return fontval
 
         def validator(value):
@@ -491,7 +482,7 @@ class LvFont(LValidator):
                 return lv_builtin_font(value)
             add_lv_use("font")
             fontval = cv.use_id(Font)(value)
-            esphome_fonts_used.add(fontval)
+            get_lvgl_data().esphome_fonts_used.add(fontval)
             return requires_component("font")(fontval)
 
         # Use font::Font* as return type for lambdas returning ESPHome fonts

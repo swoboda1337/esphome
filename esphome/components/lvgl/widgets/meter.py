@@ -27,7 +27,7 @@ from ..defines import (
     CONF_START_VALUE,
     CONF_TICKS,
 )
-from ..helpers import add_lv_use, lvgl_components_required
+from ..helpers import add_lv_use, get_lvgl_data
 from ..lv_validation import (
     get_end_value,
     get_start_value,
@@ -182,7 +182,7 @@ class MeterType(WidgetType):
     async def to_code(self, w: Widget, config):
         """For a meter object, create and set parameters"""
 
-        lvgl_components_required.add(CONF_METER)
+        get_lvgl_data().lvgl_components_required.add(CONF_METER)
         var = w.obj
         for scale_conf in config.get(CONF_SCALES, ()):
             rotation = 90 + (360 - scale_conf[CONF_ANGLE_RANGE]) / 2

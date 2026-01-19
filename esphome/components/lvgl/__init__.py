@@ -29,8 +29,8 @@ from esphome.final_validate import full_config
 from esphome.helpers import write_file_if_changed
 from esphome.yaml_util import load_yaml
 
-from . import defines as df, helpers, lv_validation as lvalid, widgets
-from .automation import disp_update, focused_widgets, refreshed_widgets
+from . import defines as df, lv_validation as lvalid, widgets
+from .automation import disp_update
 from .defines import add_define
 from .encoders import (
     ENCODERS_CONFIG,
@@ -39,8 +39,9 @@ from .encoders import (
     initial_focus_to_code,
 )
 from .gradient import GRADIENT_SCHEMA, gradients_to_code
+from .helpers import get_lvgl_data
 from .keypads import KEYPADS_CONFIG, keypads_to_code
-from .lv_validation import lv_bool, lv_images_used
+from .lv_validation import lv_bool
 from .lvcode import LvContext, LvglComponent, lvgl_static
 from .schemas import (
     DISP_BG_SCHEMA,
@@ -54,14 +55,7 @@ from .styles import add_top_layer, styles_to_code, theme_to_code
 from .touchscreens import touchscreen_schema, touchscreens_to_code
 from .trigger import add_on_boot_triggers, generate_triggers
 from .types import IdleTrigger, PlainTrigger, lv_font_t, lv_group_t, lv_style_t, lvgl_ns
-from .widgets import (
-    LvScrActType,
-    Widget,
-    add_widgets,
-    get_scr_act,
-    set_obj_properties,
-    styles_used,
-)
+from .widgets import LvScrActType, Widget, add_widgets, get_scr_act, set_obj_properties
 
 # Import only what we actually use directly in this file
 from .widgets.msgbox import MSGBOX_SCHEMA, msgboxes_to_code
@@ -167,14 +161,14 @@ def final_validation(config_list):
         buffer_frac = config[CONF_BUFFER_SIZE]
         if CORE.is_esp32 and buffer_frac > 0.5 and PSRAM_DOMAIN not in global_config:
             LOGGER.warning("buffer_size: may need to be reduced without PSRAM")
-        for image_id in lv_images_used:
+        for image_id in get_lvgl_data().lv_images_used:
             path = global_config.get_path_for_id(image_id)[:-1]
             image_conf = global_config.get_config_for_path(path)
             if image_conf[CONF_TYPE] in ("RGBA", "RGB24"):
                 raise cv.Invalid(
                     "Using RGBA or RGB24 in image config not compatible with LVGL", path
                 )
-        for w in focused_widgets:
+        for w in get_lvgl_data().focused_widgets:
             path = global_config.get_path_for_id(w)
             widget_conf = global_config.get_config_for_path(path[:-1])
             if (
@@ -185,7 +179,7 @@ def final_validation(config_list):
                     "A non adjustable arc may not be focused",
                     path,
                 )
-        for w in refreshed_widgets:
+        for w in get_lvgl_data().refreshed_widgets:
             path = global_config.get_path_for_id(w)
             widget_conf = global_config.get_config_for_path(path[:-1])
             if not any(isinstance(v, (Lambda, dict)) for v in widget_conf.values()):
@@ -229,7 +223,7 @@ async def to_code(configs):
         cg.RawExpression(f"ESPHOME_LOG_LEVEL_{config_0[CONF_LOG_LEVEL]}"),
     )
     add_define("LV_COLOR_DEPTH", config_0[CONF_COLOR_DEPTH])
-    for font in helpers.lv_fonts_used:
+    for font in get_lvgl_data().lv_fonts_used:
         add_define(f"LV_FONT_{font.upper()}")
 
     if config_0[CONF_COLOR_DEPTH] == 16:
@@ -244,7 +238,7 @@ async def to_code(configs):
     cg.add_build_flag("-Isrc")
 
     cg.add_global(lvgl_ns.using)
-    for font in helpers.esphome_fonts_used:
+    for font in get_lvgl_data().esphome_fonts_used:
         await cg.get_variable(font)
     default_font = config_0[df.CONF_DEFAULT_FONT]
     if not lvalid.is_lv_font(default_font):
@@ -334,11 +328,11 @@ async def to_code(configs):
             await add_on_boot_triggers(config.get(CONF_ON_BOOT, ()))
 
     # This must be done after all widgets are created
-    for comp in helpers.lvgl_components_required:
+    for comp in get_lvgl_data().lvgl_components_required:
         cg.add_define(f"USE_LVGL_{comp.upper()}")
-    if {"transform_angle", "transform_zoom"} & styles_used:
+    if {"transform_angle", "transform_zoom"} & get_lvgl_data().styles_used:
         add_define("LV_COLOR_SCREEN_TRANSP", "1")
-    for use in helpers.lv_uses:
+    for use in get_lvgl_data().lv_uses:
         add_define(f"LV_USE_{use.upper()}")
         cg.add_define(f"USE_LVGL_{use.upper()}")
     lv_conf_h_file = CORE.relative_src_path(LV_CONF_FILENAME)

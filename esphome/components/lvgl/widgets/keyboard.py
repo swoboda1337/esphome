@@ -4,7 +4,7 @@ from esphome.const import CONF_ITEMS, CONF_MODE
 from esphome.cpp_types import std_string
 
 from ..defines import CONF_MAIN, KEYBOARD_MODES, literal
-from ..helpers import add_lv_use, lvgl_components_required
+from ..helpers import add_lv_use, get_lvgl_data
 from ..types import LvCompound, LvType
 from . import Widget, WidgetType, get_widgets
 from .textarea import CONF_TEXTAREA, lv_textarea_t
@@ -44,8 +44,8 @@ class KeyboardType(WidgetType):
         return CONF_KEYBOARD, CONF_TEXTAREA
 
     async def to_code(self, w: Widget, config: dict):
-        lvgl_components_required.add("KEY_LISTENER")
-        lvgl_components_required.add(CONF_KEYBOARD)
+        get_lvgl_data().lvgl_components_required.add("KEY_LISTENER")
+        get_lvgl_data().lvgl_components_required.add(CONF_KEYBOARD)
         add_lv_use("btnmatrix")
         if mode := config.get(CONF_MODE):
             await w.set_property(CONF_MODE, await KEYBOARD_MODES.process(mode))

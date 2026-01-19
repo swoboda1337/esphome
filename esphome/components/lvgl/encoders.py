@@ -14,7 +14,7 @@ from .defines import (
     CONF_LONG_PRESS_TIME,
     CONF_RIGHT_BUTTON,
 )
-from .helpers import lvgl_components_required, requires_component
+from .helpers import get_lvgl_data, requires_component
 from .lvcode import lv, lv_add, lv_assign, lv_expr, lv_Pvariable
 from .schemas import ENCODER_SCHEMA
 from .types import lv_group_t, lv_indev_type_t, lv_key_t
@@ -48,7 +48,7 @@ def get_default_group(config):
 
 async def encoders_to_code(var, config, default_group):
     for enc_conf in config[CONF_ENCODERS]:
-        lvgl_components_required.add("KEY_LISTENER")
+        get_lvgl_data().lvgl_components_required.add("KEY_LISTENER")
         lpt = enc_conf[CONF_LONG_PRESS_TIME].total_milliseconds
         lprt = enc_conf[CONF_LONG_PRESS_REPEAT_TIME].total_milliseconds
         listener = cg.new_Pvariable(

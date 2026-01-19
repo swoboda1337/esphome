@@ -21,6 +21,7 @@ from .defines import (
     literal,
     static_cast,
 )
+from .helpers import get_lvgl_data
 from .lv_validation import lv_bool, lv_color, lv_image, lv_milliseconds, opacity
 from .lvcode import (
     LVGL_COMP_ARG,
@@ -61,10 +62,6 @@ from .widgets import (
     set_obj_properties,
     wait_for_widgets,
 )
-
-# Record widgets that are used in a focused action here
-focused_widgets = set()
-refreshed_widgets = set()
 
 
 async def action_to_code(
@@ -293,7 +290,7 @@ async def obj_show_to_code(config, action_id, template_arg, args):
 
 def focused_id(value):
     value = cv.use_id(lv_pseudo_button_t)(value)
-    focused_widgets.add(value)
+    get_lvgl_data().focused_widgets.add(value)
     return value
 
 
@@ -375,7 +372,7 @@ async def obj_update_to_code(config, action_id, template_arg, args):
 
 def validate_refresh_config(config):
     for w in config:
-        refreshed_widgets.add(w[CONF_ID])
+        get_lvgl_data().refreshed_widgets.add(w[CONF_ID])
     return config
 
 

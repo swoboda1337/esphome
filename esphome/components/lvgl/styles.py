@@ -11,7 +11,7 @@ from .defines import (
     LValidator,
     literal,
 )
-from .helpers import add_lv_use
+from .helpers import add_lv_use, get_lvgl_data
 from .lvcode import LambdaContext, LocalVariable, lv
 from .schemas import ALL_STYLES, FULL_STYLE_SCHEMA, STYLE_REMAP
 from .types import ObjUpdateAction, lv_obj_t, lv_style_t
@@ -20,7 +20,6 @@ from .widgets import (
     add_widgets,
     collect_parts,
     set_obj_properties,
-    theme_widget_map,
     wait_for_widgets,
 )
 from .widgets.obj import obj_spec
@@ -85,7 +84,7 @@ async def theme_to_code(config):
                     )
                     for state, props in states.items()
                 }
-            theme_widget_map[w_name] = styles
+            get_lvgl_data().theme_widget_map[w_name] = styles
 
 
 async def add_top_layer(lv_component, config):

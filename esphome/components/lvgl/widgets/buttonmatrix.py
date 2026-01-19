@@ -18,7 +18,7 @@ from ..defines import (
     CONF_PAD_ROW,
     CONF_SELECTED,
 )
-from ..helpers import lvgl_components_required
+from ..helpers import get_lvgl_data
 from ..lv_validation import key_code, lv_bool, padding
 from ..lvcode import lv, lv_add, lv_expr
 from ..schemas import automation_schema
@@ -191,7 +191,7 @@ class ButtonMatrixType(WidgetType):
         )
 
     async def to_code(self, w: Widget, config):
-        lvgl_components_required.add("BUTTONMATRIX")
+        get_lvgl_data().lvgl_components_required.add("BUTTONMATRIX")
         if CONF_ROWS not in config:
             return
         text_list, ctrl_list, width_list, key_list = await get_button_data(

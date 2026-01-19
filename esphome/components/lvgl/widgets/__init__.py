@@ -33,7 +33,7 @@ from ..defines import (
     join_enums,
     literal,
 )
-from ..helpers import add_lv_use
+from ..helpers import add_lv_use, get_lvgl_data
 from ..lvcode import (
     LvConditional,
     add_line_marks,
@@ -48,9 +48,6 @@ from ..schemas import ALL_STYLES, OBJ_PROPERTIES, STYLE_REMAP, WIDGET_TYPES
 from ..types import LV_STATE, LvType, WidgetType, lv_coord_t, lv_obj_t, lv_obj_t_ptr
 
 EVENT_LAMB = "event_lamb__"
-
-theme_widget_map = {}
-styles_used = set()
 
 
 class Widget:
@@ -141,7 +138,7 @@ class Widget:
     def set_style(self, prop, value, state):
         if value is None:
             return
-        styles_used.add(prop)
+        get_lvgl_data().styles_used.add(prop)
         lv.call(f"obj_set_style_{prop}", self.obj, value, state)
 
     def __type_base(self):
@@ -453,7 +450,7 @@ async def widget_to_code(w_cnfig, w_type: WidgetType, parent):
         spec.on_create(var, w_cnfig)
 
     w = Widget.create(wid, var, spec, w_cnfig)
-    if theme := theme_widget_map.get(w_type):
+    if theme := get_lvgl_data().theme_widget_map.get(w_type):
         for part, states in theme.items():
             part = "LV_PART_" + part.upper()
             for state, style in states.items():

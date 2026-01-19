@@ -13,7 +13,7 @@ from ..defines import (
     DIRECTIONS,
     literal,
 )
-from ..helpers import lvgl_components_required
+from ..helpers import get_lvgl_data
 from ..lv_validation import lv_int, lv_text, option_string
 from ..lvcode import LocalVariable, lv, lv_add, lv_expr
 from ..schemas import part_schema
@@ -66,7 +66,7 @@ class DropdownType(WidgetType):
         )
 
     async def to_code(self, w: Widget, config):
-        lvgl_components_required.add(CONF_DROPDOWN)
+        get_lvgl_data().lvgl_components_required.add(CONF_DROPDOWN)
         if options := config.get(CONF_OPTIONS):
             lv_add(w.var.set_options(options))
         if symbol := config.get(CONF_SYMBOL):

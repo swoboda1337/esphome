@@ -11,7 +11,7 @@ from .defines import (
     CONF_LONG_PRESS_TIME,
     literal,
 )
-from .helpers import lvgl_components_required
+from .helpers import get_lvgl_data
 from .lvcode import lv, lv_assign, lv_expr, lv_Pvariable
 from .schemas import ENCODER_SCHEMA
 from .types import lv_group_t, lv_indev_type_t
@@ -52,7 +52,7 @@ KEYPADS_CONFIG = cv.ensure_list(
 
 async def keypads_to_code(var, config, default_group):
     for enc_conf in config[CONF_KEYPADS]:
-        lvgl_components_required.add("KEY_LISTENER")
+        get_lvgl_data().lvgl_components_required.add("KEY_LISTENER")
         lpt = enc_conf[CONF_LONG_PRESS_TIME].total_milliseconds
         lprt = enc_conf[CONF_LONG_PRESS_REPEAT_TIME].total_milliseconds
         listener = cg.new_Pvariable(

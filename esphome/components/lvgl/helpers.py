@@ -1,27 +1,54 @@
+from dataclasses import dataclass, field
 import re
 
 from esphome import config_validation as cv
 from esphome.const import CONF_ARGS, CONF_FORMAT
+from esphome.core import CORE
 
 CONF_IF_NAN = "if_nan"
+DOMAIN = "lvgl"
 
-lv_uses = {
-    "USER_DATA",
-    "LOG",
-    "STYLE",
-    "FONT_PLACEHOLDER",
-    "THEME_DEFAULT",
-}
+# Default LV uses that are always required
+DEFAULT_LV_USES = frozenset(
+    {
+        "USER_DATA",
+        "LOG",
+        "STYLE",
+        "FONT_PLACEHOLDER",
+        "THEME_DEFAULT",
+    }
+)
+
+
+@dataclass
+class LvglData:
+    """State for LVGL component stored in CORE.data."""
+
+    lv_uses: set[str] = field(default_factory=lambda: set(DEFAULT_LV_USES))
+    lv_fonts_used: set[str] = field(default_factory=set)
+    esphome_fonts_used: set[str] = field(default_factory=set)
+    lvgl_components_required: set[str] = field(default_factory=set)
+    lv_images_used: set = field(default_factory=set)
+    focused_widgets: set = field(default_factory=set)
+    refreshed_widgets: set = field(default_factory=set)
+    theme_widget_map: dict = field(default_factory=dict)
+    styles_used: set[str] = field(default_factory=set)
+    lv_defines: dict[str, str] = field(default_factory=dict)
+    updated_widgets: dict = field(default_factory=dict)
+
+
+def get_lvgl_data() -> LvglData:
+    """Get or create LVGL data in CORE.data."""
+    if DOMAIN not in CORE.data:
+        CORE.data[DOMAIN] = LvglData()
+    return CORE.data[DOMAIN]
 
 
 def add_lv_use(*names):
+    data = get_lvgl_data()
     for name in names:
-        lv_uses.add(name)
+        data.lv_uses.add(name)
 
-
-lv_fonts_used = set()
-esphome_fonts_used = set()
-lvgl_components_required = set()
 
 # noqa
 f_regex = re.compile(
@@ -70,7 +97,7 @@ def validate_printf(value):
 
 def requires_component(comp):
     def validator(value):
-        lvgl_components_required.add(comp)
+        get_lvgl_data().lvgl_components_required.add(comp)
         return cv.requires_component(comp)(value)
 
     return validator
