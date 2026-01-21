@@ -125,15 +125,19 @@ uint8_t OtaHttpRequestComponent::do_ota_() {
     App.feed_wdt();
     yield();
 
-    // Exit loop if no data available (stream closed or end of data)
-    if (bufsize <= 0) {
-      if (bufsize < 0) {
-        ESP_LOGE(TAG, "Stream closed with error");
-        this->cleanup_(std::move(backend), container);
-        return OTA_CONNECTION_ERROR;
+    if (bufsize < 0) {
+      ESP_LOGE(TAG, "Stream closed with error");
+      this->cleanup_(std::move(backend), container);
+      return OTA_CONNECTION_ERROR;
+    }
+
+    // No data available yet - continue waiting if we know more data is expected.
+    // Only break early if content_length is 0 (unknown), to avoid infinite loop.
+    if (bufsize == 0) {
+      if (container->content_length == 0) {
+        break;
       }
-      // bufsize == 0: no more data available, exit loop
-      break;
+      continue;
     }
 
     if (bufsize <= OtaHttpRequestComponent::HTTP_RECV_BUFFER) {
@@ -247,7 +251,7 @@ bool OtaHttpRequestComponent::http_get_md5_() {
   int read_len = 0;
   while (container->get_bytes_read() < MD5_SIZE) {
     read_len = container->read((uint8_t *) this->md5_expected_.data(), MD5_SIZE);
-    if (read_len <= 0) {
+    if (read_len < 0) {
       break;
     }
     App.feed_wdt();

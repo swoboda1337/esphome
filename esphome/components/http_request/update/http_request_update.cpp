@@ -76,9 +76,18 @@ void HttpRequestUpdate::update_task(void *params) {
 
     yield();
 
-    if (read_bytes <= 0) {
-      // Network error or connection closed - break to avoid infinite loop
+    if (read_bytes < 0) {
+      // Network error or connection closed
       break;
+    }
+
+    // No data available yet - continue waiting if we know more data is expected.
+    // Only break early if content_length is 0 (unknown), to avoid infinite loop.
+    if (read_bytes == 0) {
+      if (container->content_length == 0) {
+        break;
+      }
+      continue;
     }
 
     read_index += read_bytes;

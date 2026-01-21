@@ -252,11 +252,19 @@ template<typename... Ts> class HttpRequestSendAction : public Action<Ts...> {
         size_t read_index = 0;
         while (container->get_bytes_read() < max_length) {
           int read = container->read(buf + read_index, std::min<size_t>(max_length - read_index, 512));
-          if (read <= 0) {
-            break;
-          }
           App.feed_wdt();
           yield();
+          if (read < 0) {
+            break;
+          }
+          // No data available yet - continue waiting if we know more data is expected.
+          // Only break early if content_length is 0 (unknown), to avoid infinite loop.
+          if (read == 0) {
+            if (container->content_length == 0) {
+              break;
+            }
+            continue;
+          }
           read_index += read;
         }
         response_body.reserve(read_index);
