@@ -11,6 +11,15 @@ static constexpr uint32_t MEASUREMENT_TIMEOUT_US = 80000;  // Maximum time to wa
 
 void IRAM_ATTR UltrasonicSensorStore::gpio_intr(UltrasonicSensorStore *arg) {
   uint32_t now = micros();
+
+  // Record debug info if buffer not full
+  if (arg->debug_count < DEBUG_ISR_BUFFER_SIZE) {
+    size_t idx = arg->debug_count;
+    arg->debug_timestamps[idx] = now;
+    arg->debug_levels[idx] = arg->echo_pin_isr.digital_read();
+    arg->debug_count++;
+  }
+
   if (!arg->echo_start || (now - arg->echo_start_us) <= DEBOUNCE_US) {
     arg->echo_start_us = now;
     arg->echo_start = true;
@@ -38,12 +47,25 @@ void UltrasonicSensorComponent::setup() {
   this->trigger_pin_->digital_write(false);
   this->trigger_pin_isr_ = this->trigger_pin_->to_isr();
   this->echo_pin_->setup();
+  this->store_.echo_pin_isr = this->echo_pin_->to_isr();
   this->echo_pin_->attach_interrupt(UltrasonicSensorStore::gpio_intr, &this->store_, gpio::INTERRUPT_ANY_EDGE);
+  this->debug_start_us_ = 0;
 }
 
 void UltrasonicSensorComponent::update() {
   if (this->measurement_pending_) {
     return;
+  }
+  if ((micros() - this->debug_start_us_) >= 1000000) {
+    size_t count = this->store_.debug_count;
+    ESP_LOGI(TAG, "ISR Debug: %" PRIu32 " events captured starting at %" PRIu32 "us", (uint32_t) count,
+             this->debug_start_us_);
+    for (size_t i = 0; i < count; i++) {
+      ESP_LOGI(TAG, "  [%zu] ts=%" PRIu32 " level=%u", i, this->store_.debug_timestamps[i],
+               this->store_.debug_levels[i]);
+    }
+    this->store_.debug_count = 0;
+    this->debug_start_us_ = micros();
   }
   this->send_trigger_pulse_();
 }

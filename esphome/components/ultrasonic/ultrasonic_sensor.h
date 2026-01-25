@@ -8,6 +8,8 @@
 
 namespace esphome::ultrasonic {
 
+static constexpr size_t DEBUG_ISR_BUFFER_SIZE = 64;
+
 struct UltrasonicSensorStore {
   static void gpio_intr(UltrasonicSensorStore *arg);
 
@@ -15,6 +17,12 @@ struct UltrasonicSensorStore {
   volatile uint32_t echo_end_us{0};
   volatile bool echo_start{false};
   volatile bool echo_end{false};
+
+  // Debug arrays for ISR events
+  volatile uint32_t debug_timestamps[DEBUG_ISR_BUFFER_SIZE]{};
+  volatile uint8_t debug_levels[DEBUG_ISR_BUFFER_SIZE]{};
+  volatile size_t debug_count{0};
+  ISRInternalGPIOPin echo_pin_isr;
 };
 
 class UltrasonicSensorComponent : public sensor::Sensor, public PollingComponent {
@@ -45,6 +53,8 @@ class UltrasonicSensorComponent : public sensor::Sensor, public PollingComponent
 
   uint32_t measurement_start_us_{0};
   bool measurement_pending_{false};
+
+  uint32_t debug_start_us_{0};
 };
 
 }  // namespace esphome::ultrasonic
