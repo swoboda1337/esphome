@@ -92,7 +92,7 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::perform(const std::string &url, c
   config.max_redirection_count = this->redirect_limit_;
   config.auth_type = HTTP_AUTH_TYPE_BASIC;
 #if CONFIG_MBEDTLS_CERTIFICATE_BUNDLE
-  if (secure) {
+  if (secure && this->verify_ssl_) {
     config.crt_bundle_attach = esp_crt_bundle_attach;
   }
 #endif
@@ -248,39 +248,57 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::perform(const std::string &url, c
   return container;
 }
 
+// ESP-IDF HTTP read implementation (blocking mode)
+//
+// WARNING: Return values differ from BSD sockets! See http_request.h for full documentation.
+//
+// esp_http_client_read() in blocking mode returns:
+//   > 0: bytes read
+//   0: connection closed (end of stream)
+//   < 0: error
+//
+// We normalize to HttpContainer::read() contract:
+//   > 0: bytes read
+//   0: no data yet / all content read (caller should check bytes_read vs content_length)
+//   < 0: error/connection closed
 int HttpContainerIDF::read(uint8_t *buf, size_t max_len) {
   const uint32_t start = millis();
   watchdog::WatchdogManager wdm(this->parent_->get_watchdog_timeout());
 
-  size_t bufsize = max_len;
-
-  // If content_length is known (non-zero), limit reads to remaining bytes
-  if (this->content_length > 0) {
-    size_t remaining = this->content_length - this->bytes_read_;
-    if (remaining == 0) {
-      this->duration_ms += (millis() - start);
-      return 0;
-    }
-    bufsize = std::min(max_len, remaining);
+  // If content_length is known (> 0), check if we've already read all expected content
+  if (this->content_length > 0 && this->bytes_read_ >= this->content_length) {
+    return 0;  // All content read successfully
   }
 
   this->feed_wdt();
-  int read_len = esp_http_client_read(this->client_, (char *) buf, max_len);
+  int read_len_or_error = esp_http_client_read(this->client_, (char *) buf, max_len);
   this->feed_wdt();
-  if (read_len > 0) {
-    this->bytes_read_ += read_len;
-  }
 
   this->duration_ms += (millis() - start);
 
-  return read_len;
+  if (read_len_or_error > 0) {
+    this->bytes_read_ += read_len_or_error;
+    return read_len_or_error;
+  }
+
+  // Connection closed by server before all content received
+  if (read_len_or_error == 0) {
+    return HTTP_ERROR_CONNECTION_CLOSED;
+  }
+
+  // Negative value - error, return the actual error code for debugging
+  return read_len_or_error;
 }
 
 void HttpContainerIDF::end() {
+  if (this->client_ == nullptr) {
+    return;  // Already cleaned up
+  }
   watchdog::WatchdogManager wdm(this->parent_->get_watchdog_timeout());
 
   esp_http_client_close(this->client_);
   esp_http_client_cleanup(this->client_);
+  this->client_ = nullptr;
 }
 
 bool HttpContainerIDF::is_complete_data_received() { return esp_http_client_is_complete_data_received(this->client_); }
