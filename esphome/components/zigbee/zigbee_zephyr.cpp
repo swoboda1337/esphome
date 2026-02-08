@@ -225,17 +225,76 @@ void ZigbeeComponent::dump_config() {
                 zb_get_pan_id());
 }
 
-static void wake_zboss_scheduler(zb_bufid_t bufid, zb_uint16_t cmd_id) {
-  ESP_LOGD(TAG, "Waking ZBOSS scheduler to process pending attribute reports");
-  zb_buf_free(bufid);
+void ZigbeeComponent::report_attribute(zb_uint8_t ep, zb_uint16_t cluster_id, zb_uint16_t attr_id) {
+  // Deduplicate: if the same attribute is already queued, skip.
+  // The attribute store already has the latest value from ZB_ZCL_SET_ATTRIBUTE.
+  for (zb_uint8_t i = 0; i < this->pending_count_; i++) {
+    if (this->pending_reports_[i].ep == ep && this->pending_reports_[i].cluster_id == cluster_id &&
+        this->pending_reports_[i].attr_id == attr_id) {
+      return;
+    }
+  }
+  if (this->pending_count_ < this->pending_reports_.size()) {
+    this->pending_reports_[this->pending_count_++] = {ep, cluster_id, attr_id};
+  } else {
+    ESP_LOGW(TAG, "Pending report queue full, dropping report for ep %d cluster 0x%04X attr 0x%04X", ep, cluster_id,
+             attr_id);
+  }
 }
 
-void ZigbeeComponent::force_report() { this->force_report_ = true; }
+void ZigbeeComponent::send_report_(zb_bufid_t bufid, const PendingReport &report) {
+  // Try using existing reporting config (set up by coordinator via Configure Reporting)
+  auto *rep_info = zb_zcl_find_reporting_info(report.ep, report.cluster_id, ZB_ZCL_CLUSTER_SERVER_ROLE, report.attr_id);
+  if (rep_info) {
+    ESP_LOGD(TAG, "Sending report via reporting info ep: %d cluster: 0x%04X attr: 0x%04X", report.ep, report.cluster_id,
+             report.attr_id);
+    zb_zcl_send_report_attr_command(rep_info, bufid);
+    return;
+  }
+
+  // Fallback: construct and send Report Attributes frame directly to coordinator
+  auto *attr_desc = zb_zcl_get_attr_desc_a(report.ep, report.cluster_id, ZB_ZCL_CLUSTER_SERVER_ROLE, report.attr_id);
+  if (!attr_desc) {
+    ESP_LOGE(TAG, "Attribute not found ep: %d cluster: 0x%04X attr: 0x%04X", report.ep, report.cluster_id,
+             report.attr_id);
+    zb_buf_free(bufid);
+    return;
+  }
+
+  ESP_LOGD(TAG, "Sending raw report ep: %d cluster: 0x%04X attr: 0x%04X", report.ep, report.cluster_id, report.attr_id);
+  zb_uint8_t *cmd_ptr = (zb_uint8_t *) ZB_ZCL_START_PACKET(bufid);
+  ZB_ZCL_CONSTRUCT_GENERAL_COMMAND_REQ_FRAME_CONTROL_A(
+      cmd_ptr, ZB_ZCL_FRAME_DIRECTION_TO_CLI, ZB_ZCL_NOT_MANUFACTURER_SPECIFIC, ZB_ZCL_DISABLE_DEFAULT_RESPONSE);
+  ZB_ZCL_CONSTRUCT_COMMAND_HEADER(cmd_ptr, ZB_ZCL_GET_SEQ_NUM(), ZB_ZCL_CMD_REPORT_ATTRIB);
+  cmd_ptr = (zb_uint8_t *) zb_put_next_htole16(cmd_ptr, report.attr_id);
+  *(cmd_ptr++) = attr_desc->type;
+  cmd_ptr = zb_zcl_put_value_to_packet(cmd_ptr, attr_desc->type, (zb_uint8_t *) attr_desc->data_p);
+
+  zb_uint16_t coord_addr = 0x0000;
+  ZB_ZCL_FINISH_N_SEND_PACKET(bufid, cmd_ptr, coord_addr, ZB_APS_ADDR_MODE_16_ENDP_PRESENT, 1, report.ep,
+                              ZB_AF_HA_PROFILE_ID, report.cluster_id, NULL);
+}
+
+void ZigbeeComponent::send_report_cb_(zb_bufid_t bufid, zb_uint16_t cmd_id) {
+  if (global_zigbee->pending_count_ == 0) {
+    zb_buf_free(bufid);
+  } else {
+    auto report = global_zigbee->pending_reports_[0];
+    // shift remaining entries
+    for (zb_uint8_t i = 1; i < global_zigbee->pending_count_; i++) {
+      global_zigbee->pending_reports_[i - 1] = global_zigbee->pending_reports_[i];
+    }
+    global_zigbee->pending_count_--;
+    global_zigbee->send_report_(bufid, report);
+  }
+  // Always reset — let loop() trigger the next send after the buffer is freed
+  global_zigbee->report_in_flight_ = false;
+}
 
 void ZigbeeComponent::loop() {
-  if (this->force_report_) {
-    this->force_report_ = false;
-    zb_buf_get_out_delayed_ext(wake_zboss_scheduler, 0, 0);
+  if (this->pending_count_ > 0 && !this->report_in_flight_) {
+    this->report_in_flight_ = true;
+    zb_buf_get_out_delayed_ext(send_report_cb_, 0, 0);
   }
 }
 

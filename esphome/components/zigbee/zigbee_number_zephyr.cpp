@@ -21,9 +21,8 @@ void ZigbeeNumber::setup() {
     ZB_ZCL_SET_ATTRIBUTE(this->endpoint_, ZB_ZCL_CLUSTER_ID_ANALOG_OUTPUT, ZB_ZCL_CLUSTER_SERVER_ROLE,
                          ZB_ZCL_ATTR_ANALOG_OUTPUT_PRESENT_VALUE_ID, (zb_uint8_t *) &cluster_attributes_->present_value,
                          ZB_FALSE);
-    zb_zcl_mark_attr_for_reporting(this->endpoint_, ZB_ZCL_CLUSTER_ID_ANALOG_OUTPUT, ZB_ZCL_CLUSTER_SERVER_ROLE,
-                                   ZB_ZCL_ATTR_ANALOG_OUTPUT_PRESENT_VALUE_ID);
-    this->parent_->force_report();
+    this->parent_->report_attribute(this->endpoint_, ZB_ZCL_CLUSTER_ID_ANALOG_OUTPUT,
+                                    ZB_ZCL_ATTR_ANALOG_OUTPUT_PRESENT_VALUE_ID);
   });
 }
 

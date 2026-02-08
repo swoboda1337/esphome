@@ -66,6 +66,12 @@ struct AnalogAttrsOutput : AnalogAttrs {
   float resolution;
 };
 
+struct PendingReport {
+  zb_uint8_t ep;
+  zb_uint16_t cluster_id;
+  zb_uint16_t attr_id;
+};
+
 class ZigbeeComponent : public Component {
  public:
   void setup() override;
@@ -78,11 +84,13 @@ class ZigbeeComponent : public Component {
   void zboss_signal_handler_esphome(zb_bufid_t bufid);
   void factory_reset();
   Trigger<> *get_join_trigger() { return &this->join_trigger_; };
-  void force_report();
+  void report_attribute(zb_uint8_t ep, zb_uint16_t cluster_id, zb_uint16_t attr_id);
   void loop() override;
 
  protected:
   static void zcl_device_cb(zb_bufid_t bufid);
+  static void send_report_cb_(zb_bufid_t bufid, zb_uint16_t cmd_id);
+  void send_report_(zb_bufid_t bufid, const PendingReport &report);
   void on_join_();
 #ifdef USE_ZIGBEE_WIPE_ON_BOOT
   void erase_flash_(int area);
@@ -90,7 +98,9 @@ class ZigbeeComponent : public Component {
   std::array<std::function<void(zb_bufid_t bufid)>, ZIGBEE_ENDPOINTS_COUNT> callbacks_{};
   CallbackManager<void()> join_cb_;
   Trigger<> join_trigger_;
-  bool force_report_{false};
+  std::array<PendingReport, ZIGBEE_ENDPOINTS_COUNT> pending_reports_{};
+  zb_uint8_t pending_count_{0};
+  bool report_in_flight_{false};
 };
 
 class ZigbeeEntity {
