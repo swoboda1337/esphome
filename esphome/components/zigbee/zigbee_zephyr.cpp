@@ -225,8 +225,8 @@ void ZigbeeComponent::dump_config() {
                 zb_get_pan_id());
 }
 
-static void send_attribute_report(zb_bufid_t bufid, zb_uint16_t cmd_id) {
-  ESP_LOGD(TAG, "Force zboss scheduler to wake and send attribute report");
+static void wake_zboss_scheduler(zb_bufid_t bufid, zb_uint16_t cmd_id) {
+  ESP_LOGD(TAG, "Waking ZBOSS scheduler to process pending attribute reports");
   zb_buf_free(bufid);
 }
 
@@ -235,7 +235,7 @@ void ZigbeeComponent::force_report() { this->force_report_ = true; }
 void ZigbeeComponent::loop() {
   if (this->force_report_) {
     this->force_report_ = false;
-    zb_buf_get_out_delayed_ext(send_attribute_report, 0, 0);
+    zb_buf_get_out_delayed_ext(wake_zboss_scheduler, 0, 0);
   }
 }
 
