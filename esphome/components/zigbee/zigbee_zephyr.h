@@ -90,6 +90,7 @@ class ZigbeeComponent : public Component {
  protected:
   static void zcl_device_cb(zb_bufid_t bufid);
   static void send_report_cb_(zb_bufid_t bufid, zb_uint16_t cmd_id);
+  static void on_report_sent_(zb_uint8_t bufid);
   void send_report_(zb_bufid_t bufid, const PendingReport &report);
   void on_join_();
 #ifdef USE_ZIGBEE_WIPE_ON_BOOT

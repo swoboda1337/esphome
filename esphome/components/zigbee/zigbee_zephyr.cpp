@@ -242,22 +242,18 @@ void ZigbeeComponent::report_attribute(zb_uint8_t ep, zb_uint16_t cluster_id, zb
   }
 }
 
-void ZigbeeComponent::send_report_(zb_bufid_t bufid, const PendingReport &report) {
-  // Try using existing reporting config (set up by coordinator via Configure Reporting)
-  auto *rep_info = zb_zcl_find_reporting_info(report.ep, report.cluster_id, ZB_ZCL_CLUSTER_SERVER_ROLE, report.attr_id);
-  if (rep_info) {
-    ESP_LOGD(TAG, "Sending report via reporting info ep: %d cluster: 0x%04X attr: 0x%04X", report.ep, report.cluster_id,
-             report.attr_id);
-    zb_zcl_send_report_attr_command(rep_info, bufid);
-    return;
-  }
+void ZigbeeComponent::on_report_sent_(zb_uint8_t bufid) {
+  zb_buf_free(bufid);
+  global_zigbee->report_in_flight_ = false;
+}
 
-  // Fallback: construct and send Report Attributes frame directly to coordinator
+void ZigbeeComponent::send_report_(zb_bufid_t bufid, const PendingReport &report) {
   auto *attr_desc = zb_zcl_get_attr_desc_a(report.ep, report.cluster_id, ZB_ZCL_CLUSTER_SERVER_ROLE, report.attr_id);
   if (!attr_desc) {
     ESP_LOGE(TAG, "Attribute not found ep: %d cluster: 0x%04X attr: 0x%04X", report.ep, report.cluster_id,
              report.attr_id);
     zb_buf_free(bufid);
+    this->report_in_flight_ = false;
     return;
   }
 
@@ -271,30 +267,36 @@ void ZigbeeComponent::send_report_(zb_bufid_t bufid, const PendingReport &report
   cmd_ptr = zb_zcl_put_value_to_packet(cmd_ptr, attr_desc->type, (zb_uint8_t *) attr_desc->data_p);
 
   zb_uint16_t coord_addr = 0x0000;
+  // on_report_sent_ frees the buffer and resets report_in_flight_ when transmission completes.
+  // Without a callback, ZBOSS leaks buffers on send failure.
   ZB_ZCL_FINISH_N_SEND_PACKET(bufid, cmd_ptr, coord_addr, ZB_APS_ADDR_MODE_16_ENDP_PRESENT, 1, report.ep,
-                              ZB_AF_HA_PROFILE_ID, report.cluster_id, NULL);
+                              ZB_AF_HA_PROFILE_ID, report.cluster_id, on_report_sent_);
 }
 
 void ZigbeeComponent::send_report_cb_(zb_bufid_t bufid, zb_uint16_t cmd_id) {
   if (global_zigbee->pending_count_ == 0) {
     zb_buf_free(bufid);
-  } else {
-    auto report = global_zigbee->pending_reports_[0];
-    // shift remaining entries
-    for (zb_uint8_t i = 1; i < global_zigbee->pending_count_; i++) {
-      global_zigbee->pending_reports_[i - 1] = global_zigbee->pending_reports_[i];
-    }
-    global_zigbee->pending_count_--;
-    global_zigbee->send_report_(bufid, report);
+    global_zigbee->report_in_flight_ = false;
+    return;
   }
-  // Always reset — let loop() trigger the next send after the buffer is freed
-  global_zigbee->report_in_flight_ = false;
+  auto report = global_zigbee->pending_reports_[0];
+  // shift remaining entries
+  for (zb_uint8_t i = 1; i < global_zigbee->pending_count_; i++) {
+    global_zigbee->pending_reports_[i - 1] = global_zigbee->pending_reports_[i];
+  }
+  global_zigbee->pending_count_--;
+  // send_report_ resets report_in_flight_ via on_report_sent_ callback
+  // or directly on error
+  global_zigbee->send_report_(bufid, report);
 }
 
 void ZigbeeComponent::loop() {
   if (this->pending_count_ > 0 && !this->report_in_flight_) {
     this->report_in_flight_ = true;
-    zb_buf_get_out_delayed_ext(send_report_cb_, 0, 0);
+    if (zb_buf_get_out_delayed_ext(send_report_cb_, 0, 0) != RET_OK) {
+      ESP_LOGW(TAG, "Failed to request report buffer, will retry");
+      this->report_in_flight_ = false;
+    }
   }
 }
 
