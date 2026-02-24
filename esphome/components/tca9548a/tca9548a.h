@@ -33,6 +33,7 @@ class TCA9548AComponent : public Component, public i2c::I2CDevice {
   void disable_all_channels();
 
  protected:
+  uint8_t current_channel_val_{0};
   friend class TCA9548AChannel;
 };
 }  // namespace tca9548a
