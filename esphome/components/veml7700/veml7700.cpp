@@ -222,6 +222,14 @@ void VEML7700Component::loop() {
 ErrorCode VEML7700Component::configure_() {
   ESP_LOGV(TAG, "Configure");
 
+  // Read ALS_CONF_0 to verify device is reachable (important when behind an I2C mux)
+  uint8_t conf_buf[VEML_REG_SIZE];
+  auto err = this->read_register((uint8_t) CommandRegisters::ALS_CONF_0, conf_buf, VEML_REG_SIZE);
+  if (err != i2c::ERROR_OK) {
+    ESP_LOGW(TAG, "Failed to read ALS_CONF_0, I2C error %d", err);
+    return err;
+  }
+
   ConfigurationRegister als_conf{0};
   als_conf.ALS_INT_EN = false;
   als_conf.ALS_PERS = Persistence::PERSISTENCE_1;
@@ -230,7 +238,7 @@ ErrorCode VEML7700Component::configure_() {
 
   als_conf.ALS_SD = true;
   ESP_LOGV(TAG, "Shutdown before config. ALS_CONF_0 to 0x%04X", als_conf.raw);
-  auto err = this->write_register((uint8_t) CommandRegisters::ALS_CONF_0, als_conf.raw_bytes, VEML_REG_SIZE);
+  err = this->write_register((uint8_t) CommandRegisters::ALS_CONF_0, als_conf.raw_bytes, VEML_REG_SIZE);
   if (err != i2c::ERROR_OK) {
     ESP_LOGW(TAG, "Failed to shutdown, I2C error %d", err);
     return err;
@@ -244,6 +252,8 @@ ErrorCode VEML7700Component::configure_() {
     ESP_LOGW(TAG, "Failed to turn on, I2C error %d", err);
     return err;
   }
+  // Datasheet: wait at least 2.5 ms after enabling before first measurement
+  delay(5);
 
   PSMRegister psm{0};
   psm.PSM = PSMMode::PSM_MODE_1;
