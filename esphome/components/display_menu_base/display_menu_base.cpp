@@ -97,6 +97,7 @@ void DisplayMenuComponent::right() {
           case MENU_MODE_JOYSTICK:
             if (this->editing_ || this->get_selected_item_()->get_immediate_edit())
               changed = this->get_selected_item_()->select_next();
+            break;
           default:
             break;
         }

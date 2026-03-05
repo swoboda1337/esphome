@@ -315,9 +315,9 @@ void Mcp4461Component::disable_wiper_(Mcp4461WiperIdx wiper) {
     return;
   }
   ESP_LOGV(TAG, "Disabling wiper %u", wiper_idx);
-  this->reg_[wiper_idx].enabled = true;
+  this->reg_[wiper_idx].enabled = false;
   if (wiper_idx < 4) {
-    this->reg_[wiper_idx].terminal_hw = true;
+    this->reg_[wiper_idx].terminal_hw = false;
     this->reg_[wiper_idx].update_terminal = true;
   }
 }
@@ -490,7 +490,7 @@ void Mcp4461Component::enable_terminal_(Mcp4461WiperIdx wiper, char terminal) {
       ESP_LOGW(TAG, "Unknown terminal %c specified", terminal);
       return;
   }
-  this->reg_[wiper_idx].update_terminal = false;
+  this->reg_[wiper_idx].update_terminal = true;
 }
 
 void Mcp4461Component::disable_terminal_(Mcp4461WiperIdx wiper, char terminal) {
@@ -517,7 +517,7 @@ void Mcp4461Component::disable_terminal_(Mcp4461WiperIdx wiper, char terminal) {
       ESP_LOGW(TAG, "Unknown terminal %c specified", terminal);
       return;
   }
-  this->reg_[wiper_idx].update_terminal = false;
+  this->reg_[wiper_idx].update_terminal = true;
 }
 
 uint16_t Mcp4461Component::get_eeprom_value(Mcp4461EepromLocation location) {
