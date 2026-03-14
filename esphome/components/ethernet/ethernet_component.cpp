@@ -155,7 +155,8 @@ void EthernetComponent::setup() {
   esp32_emac_config.smi_mdio_gpio_num = this->mdio_pin_;
 #endif
   esp32_emac_config.clock_config.rmii.clock_mode = this->clk_mode_;
-  esp32_emac_config.clock_config.rmii.clock_gpio = (emac_rmii_clock_gpio_t) this->clk_pin_;
+  esp32_emac_config.clock_config.rmii.clock_gpio =
+      static_cast<decltype(esp32_emac_config.clock_config.rmii.clock_gpio)>(this->clk_pin_);
 
   esp_eth_mac_t *mac = esp_eth_mac_new_esp32(&esp32_emac_config, &mac_config);
 #endif
@@ -164,32 +165,32 @@ void EthernetComponent::setup() {
 #ifdef USE_ETHERNET_OPENETH
     case ETHERNET_TYPE_OPENETH: {
       phy_config.autonego_timeout_ms = 1000;
-      this->phy_ = esp_eth_phy_new_dp83848(&phy_config);
+      this->phy_ = esp_eth_phy_new_generic(&phy_config);
       break;
     }
 #endif
 #if CONFIG_ETH_USE_ESP32_EMAC
 #ifdef USE_ETHERNET_LAN8720
     case ETHERNET_TYPE_LAN8720: {
-      this->phy_ = esp_eth_phy_new_lan87xx(&phy_config);
+      this->phy_ = esp_eth_phy_new_generic(&phy_config);
       break;
     }
 #endif
 #ifdef USE_ETHERNET_RTL8201
     case ETHERNET_TYPE_RTL8201: {
-      this->phy_ = esp_eth_phy_new_rtl8201(&phy_config);
+      this->phy_ = esp_eth_phy_new_generic(&phy_config);
       break;
     }
 #endif
 #ifdef USE_ETHERNET_DP83848
     case ETHERNET_TYPE_DP83848: {
-      this->phy_ = esp_eth_phy_new_dp83848(&phy_config);
+      this->phy_ = esp_eth_phy_new_generic(&phy_config);
       break;
     }
 #endif
 #ifdef USE_ETHERNET_IP101
     case ETHERNET_TYPE_IP101: {
-      this->phy_ = esp_eth_phy_new_ip101(&phy_config);
+      this->phy_ = esp_eth_phy_new_generic(&phy_config);
       break;
     }
 #endif
@@ -198,17 +199,22 @@ void EthernetComponent::setup() {
       this->phy_ = esp_eth_phy_new_jl1101(&phy_config);
       break;
     }
+#elif defined(USE_ETHERNET_JL1101)
+    case ETHERNET_TYPE_JL1101: {
+      this->phy_ = esp_eth_phy_new_generic(&phy_config);
+      break;
+    }
 #endif
 #ifdef USE_ETHERNET_KSZ8081
     case ETHERNET_TYPE_KSZ8081:
     case ETHERNET_TYPE_KSZ8081RNA: {
-      this->phy_ = esp_eth_phy_new_ksz80xx(&phy_config);
+      this->phy_ = esp_eth_phy_new_generic(&phy_config);
       break;
     }
 #endif
 #ifdef USE_ETHERNET_LAN8670
     case ETHERNET_TYPE_LAN8670: {
-      this->phy_ = esp_eth_phy_new_lan867x(&phy_config);
+      this->phy_ = esp_eth_phy_new_generic(&phy_config);
       break;
     }
 #endif
@@ -217,14 +223,14 @@ void EthernetComponent::setup() {
 #if CONFIG_ETH_SPI_ETHERNET_W5500
     case ETHERNET_TYPE_W5500: {
       mac = esp_eth_mac_new_w5500(&w5500_config, &mac_config);
-      this->phy_ = esp_eth_phy_new_w5500(&phy_config);
+      this->phy_ = esp_eth_phy_new_generic(&phy_config);
       break;
     }
 #endif
 #if CONFIG_ETH_SPI_ETHERNET_DM9051
     case ETHERNET_TYPE_DM9051: {
       mac = esp_eth_mac_new_dm9051(&dm9051_config, &mac_config);
-      this->phy_ = esp_eth_phy_new_dm9051(&phy_config);
+      this->phy_ = esp_eth_phy_new_generic(&phy_config);
       break;
     }
 #endif
@@ -358,7 +364,7 @@ void EthernetComponent::dump_config() {
       eth_type = "IP101";
       break;
 #endif
-#if defined(USE_ETHERNET_JL1101) && (ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 4, 2) || !defined(PLATFORMIO))
+#ifdef USE_ETHERNET_JL1101
     case ETHERNET_TYPE_JL1101:
       eth_type = "JL1101";
       break;
