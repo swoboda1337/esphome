@@ -241,6 +241,7 @@ async def to_code(config):
                 (cg.std_vector.template(cg.uint8), "x"),
                 (cg.float_, "rssi"),
                 (cg.float_, "snr"),
+                (cg.float_, "freq_offset"),
             ],
             config[CONF_ON_PACKET],
         )

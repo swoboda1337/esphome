@@ -38,7 +38,7 @@ enum class SX127xError { NONE = 0, TIMEOUT, INVALID_PARAMS };
 
 class SX127xListener {
  public:
-  virtual void on_packet(const std::vector<uint8_t> &packet, float rssi, float snr) = 0;
+  virtual void on_packet(const std::vector<uint8_t> &packet, float rssi, float snr, float fei) = 0;
 };
 
 class SX127x : public Component,
@@ -83,7 +83,7 @@ class SX127x : public Component,
   void configure();
   SX127xError transmit_packet(const std::vector<uint8_t> &packet);
   void register_listener(SX127xListener *listener) { this->listeners_.push_back(listener); }
-  Trigger<std::vector<uint8_t>, float, float> *get_packet_trigger() { return &this->packet_trigger_; }
+  Trigger<std::vector<uint8_t>, float, float, float> *get_packet_trigger() { return &this->packet_trigger_; }
 
  protected:
   void configure_fsk_ook_();
@@ -92,9 +92,9 @@ class SX127x : public Component,
   void write_fifo_(const std::vector<uint8_t> &packet);
   void read_fifo_(std::vector<uint8_t> &packet);
   void write_register_(uint8_t reg, uint8_t value);
-  void call_listeners_(const std::vector<uint8_t> &packet, float rssi, float snr);
+  void call_listeners_(const std::vector<uint8_t> &packet, float rssi, float snr, float fei);
   uint8_t read_register_(uint8_t reg);
-  Trigger<std::vector<uint8_t>, float, float> packet_trigger_;
+  Trigger<std::vector<uint8_t>, float, float, float> packet_trigger_;
   std::vector<SX127xListener *> listeners_;
   std::vector<uint8_t> packet_;
   std::vector<uint8_t> sync_value_;

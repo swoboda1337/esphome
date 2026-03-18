@@ -301,11 +301,11 @@ SX127xError SX127x::transmit_packet(const std::vector<uint8_t> &packet) {
   return ret;
 }
 
-void SX127x::call_listeners_(const std::vector<uint8_t> &packet, float rssi, float snr) {
+void SX127x::call_listeners_(const std::vector<uint8_t> &packet, float rssi, float snr, float freq_offset) {
   for (auto &listener : this->listeners_) {
-    listener->on_packet(packet, rssi, snr);
+    listener->on_packet(packet, rssi, snr, freq_offset);
   }
-  this->packet_trigger_.trigger(packet, rssi, snr);
+  this->packet_trigger_.trigger(packet, rssi, snr, freq_offset);
 }
 
 void SX127x::loop() {
@@ -321,23 +321,30 @@ void SX127x::loop() {
       uint8_t addr = this->read_register_(REG_FIFO_RX_CURR_ADDR);
       uint8_t rssi = this->read_register_(REG_PKT_RSSI_VALUE);
       int8_t snr = (int8_t) this->read_register_(REG_PKT_SNR_VALUE);
+      // LoRa FEI is 20-bit signed across 3 registers, resolution = Fstep = FXOSC / 2^19 ≈ 61 Hz
+      int32_t fei_raw = (this->read_register_(REG_FEI_MSB) << 16) | (this->read_register_(REG_FEI_MIB) << 8) |
+                        this->read_register_(REG_FEI_LSB);
+      if (fei_raw & 0x80000)
+        fei_raw |= 0xFFF00000;  // sign-extend 20-bit to 32-bit
+      float freq_offset = fei_raw * 61.035f;
       this->packet_.resize(bytes);
       this->write_register_(REG_FIFO_ADDR_PTR, addr);
       this->read_fifo_(this->packet_);
-      if (this->frequency_ > 700000000) {
-        this->call_listeners_(this->packet_, (float) rssi - RSSI_OFFSET_HF, (float) snr / 4);
-      } else {
-        this->call_listeners_(this->packet_, (float) rssi - RSSI_OFFSET_LF, (float) snr / 4);
-      }
+      float rssi_dbm = (this->frequency_ > 700000000) ? (float) rssi - RSSI_OFFSET_HF : (float) rssi - RSSI_OFFSET_LF;
+      this->call_listeners_(this->packet_, rssi_dbm, (float) snr / 4, freq_offset);
     }
   } else if (this->packet_mode_) {
     uint8_t payload_length = this->payload_length_;
     if (payload_length == 0) {
       payload_length = this->read_register_(REG_FIFO);
     }
+    float rssi = -this->read_register_(REG_RSSI_VALUE_FSK) / 2.0f;
+    // FSK FEI is 16-bit signed across 2 registers, resolution = Fstep ≈ 61 Hz
+    int16_t fei_raw = (this->read_register_(REG_FEI_MSB_FSK) << 8) | this->read_register_(REG_FEI_LSB_FSK);
+    float freq_offset = fei_raw * 61.035f;
     this->packet_.resize(payload_length);
     this->read_fifo_(this->packet_);
-    this->call_listeners_(this->packet_, 0.0f, 0.0f);
+    this->call_listeners_(this->packet_, rssi, 0.0f, freq_offset);
   }
 }
 
