@@ -1030,26 +1030,32 @@ void PN7160::card_emu_t4t_get_response_(std::vector<uint8_t> &response, std::vec
     return;
   }
 
-  if (equal(response.begin() + nfc::NCI_PKT_HEADER_SIZE, response.end(), std::begin(CARD_EMU_T4T_APP_SELECT))) {
+  // Helper: compare payload against a static array (safe — checks sizes match)
+  auto payload_begin = response.begin() + nfc::NCI_PKT_HEADER_SIZE;
+  size_t payload_size = response.end() - payload_begin;
+
+  if (payload_size == sizeof(CARD_EMU_T4T_APP_SELECT) &&
+      equal(payload_begin, response.end(), std::begin(CARD_EMU_T4T_APP_SELECT))) {
     // CARD_EMU_T4T_APP_SELECT
     ESP_LOGVV(TAG, "CARD_EMU_NDEF_APP_SELECTED");
     this->ce_state_ = CardEmulationState::CARD_EMU_NDEF_APP_SELECTED;
     ndef_response.insert(ndef_response.begin(), std::begin(CARD_EMU_T4T_OK), std::end(CARD_EMU_T4T_OK));
-  } else if (equal(response.begin() + nfc::NCI_PKT_HEADER_SIZE, response.end(), std::begin(CARD_EMU_T4T_CC_SELECT))) {
+  } else if (payload_size == sizeof(CARD_EMU_T4T_CC_SELECT) &&
+             equal(payload_begin, response.end(), std::begin(CARD_EMU_T4T_CC_SELECT))) {
     // CARD_EMU_T4T_CC_SELECT
     if (this->ce_state_ == CardEmulationState::CARD_EMU_NDEF_APP_SELECTED) {
       ESP_LOGVV(TAG, "CARD_EMU_CC_SELECTED");
       this->ce_state_ = CardEmulationState::CARD_EMU_CC_SELECTED;
       ndef_response.insert(ndef_response.begin(), std::begin(CARD_EMU_T4T_OK), std::end(CARD_EMU_T4T_OK));
     }
-  } else if (equal(response.begin() + nfc::NCI_PKT_HEADER_SIZE, response.end(), std::begin(CARD_EMU_T4T_NDEF_SELECT))) {
+  } else if (payload_size == sizeof(CARD_EMU_T4T_NDEF_SELECT) &&
+             equal(payload_begin, response.end(), std::begin(CARD_EMU_T4T_NDEF_SELECT))) {
     // CARD_EMU_T4T_NDEF_SELECT
     ESP_LOGVV(TAG, "CARD_EMU_NDEF_SELECTED");
     this->ce_state_ = CardEmulationState::CARD_EMU_NDEF_SELECTED;
     ndef_response.insert(ndef_response.begin(), std::begin(CARD_EMU_T4T_OK), std::end(CARD_EMU_T4T_OK));
-  } else if (equal(response.begin() + nfc::NCI_PKT_HEADER_SIZE,
-                   response.begin() + nfc::NCI_PKT_HEADER_SIZE + sizeof(CARD_EMU_T4T_READ),
-                   std::begin(CARD_EMU_T4T_READ))) {
+  } else if (payload_size >= sizeof(CARD_EMU_T4T_READ) + 3 &&
+             equal(payload_begin, payload_begin + sizeof(CARD_EMU_T4T_READ), std::begin(CARD_EMU_T4T_READ))) {
     // CARD_EMU_T4T_READ
     if (this->ce_state_ == CardEmulationState::CARD_EMU_CC_SELECTED) {
       // CARD_EMU_T4T_READ with CARD_EMU_CC_SELECTED
@@ -1057,7 +1063,7 @@ void PN7160::card_emu_t4t_get_response_(std::vector<uint8_t> &response, std::vec
       uint16_t offset = (response[nfc::NCI_PKT_HEADER_SIZE + 2] << 8) + response[nfc::NCI_PKT_HEADER_SIZE + 3];
       uint8_t length = response[nfc::NCI_PKT_HEADER_SIZE + 4];
 
-      if (length <= (sizeof(CARD_EMU_T4T_CC) + offset + 2)) {
+      if (offset < sizeof(CARD_EMU_T4T_CC) && (offset + length) <= sizeof(CARD_EMU_T4T_CC)) {
         ndef_response.insert(ndef_response.begin(), std::begin(CARD_EMU_T4T_CC) + offset,
                              std::begin(CARD_EMU_T4T_CC) + offset + length);
         ndef_response.insert(ndef_response.end(), std::begin(CARD_EMU_T4T_OK), std::end(CARD_EMU_T4T_OK));
