@@ -59,7 +59,12 @@ void AS7341Component::dump_config() {
 }
 
 void AS7341Component::update() {
-  this->read_channels(this->channel_readings_);
+  if (!this->read_channels(this->channel_readings_)) {
+    ESP_LOGW(TAG, "Reading channels failed");
+    this->status_set_warning();
+    return;
+  }
+  this->status_clear_warning();
 
   if (this->f1_ != nullptr) {
     this->f1_->publish_state(this->channel_readings_[0]);
