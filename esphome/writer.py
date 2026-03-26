@@ -461,6 +461,16 @@ def _get_custom_build_dir(item: Path, data_dir: Path) -> Path | None:
 
 def clean_all(configuration: list[str]):
     data_dirs = []
+    if not configuration:
+        # No config files specified, check current directory
+        cwd_esphome = Path.cwd() / ".esphome"
+        if cwd_esphome.is_dir():
+            data_dirs.append(cwd_esphome)
+        else:
+            _LOGGER.warning(
+                "No configuration files specified and no .esphome directory found in current directory. "
+                "Pass YAML files or a configuration directory to clean build artifacts."
+            )
     for config in configuration:
         item = Path(config)
         if item.is_file() and item.suffix in (".yaml", ".yml"):
