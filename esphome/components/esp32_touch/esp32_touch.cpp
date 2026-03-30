@@ -112,6 +112,16 @@ void ESP32TouchComponent::setup() {
     if (this->iir_filter_enabled_()) {
       filter_cfg.interval_ms = this->iir_filter_;
     }
+    // Use a custom IIR filter matching the legacy driver behavior (k=4):
+    //   output = (input + 3 * prev_output) / 4
+    // The new driver default uses k=2 (50/50) which is much less aggressive
+    // and causes false triggers with thresholds calibrated for the old driver.
+    filter_cfg.data_filter_fn = [](touch_channel_handle_t, const touch_sw_filter_data_t *data, void *) -> uint32_t {
+      if (data->prev_output == 0) {
+        return data->curr_input;
+      }
+      return (data->curr_input + 3 * data->prev_output) / 4;
+    };
     err = touch_sensor_config_filter(this->sens_handle_, &filter_cfg);
     if (err != ESP_OK) {
       ESP_LOGE(TAG, "Failed to configure filter: %s", esp_err_to_name(err));
