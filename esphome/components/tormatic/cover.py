@@ -3,6 +3,8 @@ from esphome.components import cover, uart
 import esphome.config_validation as cv
 from esphome.const import CONF_CLOSE_DURATION, CONF_OPEN_DURATION
 
+DEPENDENCIES = ["uart"]
+
 tormatic_ns = cg.esphome_ns.namespace("tormatic")
 Tormatic = tormatic_ns.class_("Tormatic", cover.Cover, cg.PollingComponent)
 

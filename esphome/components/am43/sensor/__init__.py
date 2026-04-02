@@ -11,6 +11,7 @@ from esphome.const import (
     UNIT_PERCENT,
 )
 
+DEPENDENCIES = ["ble_client"]
 AUTO_LOAD = ["am43"]
 CODEOWNERS = ["@buxtronix"]
 

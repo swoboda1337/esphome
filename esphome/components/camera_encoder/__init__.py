@@ -5,7 +5,7 @@ from esphome.const import CONF_BUFFER_SIZE, CONF_ID, CONF_TYPE
 from esphome.types import ConfigType
 
 CODEOWNERS = ["@DT-art1"]
-
+DEPENDENCIES = ["esp32"]
 AUTO_LOAD = ["camera"]
 
 CONF_BUFFER_EXPAND_SIZE = "buffer_expand_size"

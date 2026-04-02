@@ -17,6 +17,8 @@ from esphome.const import (
     UNIT_WATT,
 )
 
+DEPENDENCIES = ["ble_client"]
+
 alpha3_ns = cg.esphome_ns.namespace("alpha3")
 Alpha3 = alpha3_ns.class_("Alpha3", ble_client.BLEClientNode, cg.PollingComponent)
 

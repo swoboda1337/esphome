@@ -3,6 +3,8 @@ from esphome.components import cover, uart
 import esphome.config_validation as cv
 from esphome.const import CONF_CLOSE_DURATION, CONF_OPEN_DURATION
 
+DEPENDENCIES = ["uart"]
+
 he60r_ns = cg.esphome_ns.namespace("he60r")
 HE60rCover = he60r_ns.class_("HE60rCover", cover.Cover, cg.Component)
 

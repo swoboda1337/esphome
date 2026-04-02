@@ -8,6 +8,7 @@ from esphome.const import CONF_CLK_PIN, CONF_RESET_PIN, CONF_VARIANT
 from esphome.cpp_generator import add_define
 
 CODEOWNERS = ["@swoboda1337"]
+DEPENDENCIES = ["esp32"]
 
 CONF_ACTIVE_HIGH = "active_high"
 CONF_CMD_PIN = "cmd_pin"

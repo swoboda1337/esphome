@@ -4,6 +4,8 @@ import esphome.config_validation as cv
 from esphome.const import CONF_ESPHOME, CONF_ID, CONF_NAME, Framework
 import esphome.final_validate as fv
 
+DEPENDENCIES = ["zephyr"]
+
 zephyr_ble_server_ns = cg.esphome_ns.namespace("zephyr_ble_server")
 BLEServer = zephyr_ble_server_ns.class_("BLEServer", cg.Component)
 

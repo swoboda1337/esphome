@@ -4,6 +4,7 @@ from esphome.components.remote_base import CONF_TRANSMITTER_ID
 import esphome.config_validation as cv
 from esphome.const import CONF_SENSOR, CONF_SUPPORTS_COOL, CONF_SUPPORTS_HEAT
 
+DEPENDENCIES = ["remote_transmitter"]
 AUTO_LOAD = ["sensor"]
 
 yashima_ns = cg.esphome_ns.namespace("yashima")
