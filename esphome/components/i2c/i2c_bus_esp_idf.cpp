@@ -59,6 +59,7 @@ void IDFI2CBus::setup() {
   }
 #endif
   bus_conf.i2c_port = this->port_;
+  bus_conf.intr_priority = 3;
   bus_conf.flags.enable_internal_pullup = sda_pullup_enabled_ || scl_pullup_enabled_;
   esp_err_t err = i2c_new_master_bus(&bus_conf, &this->bus_);
   if (err != ESP_OK) {
