@@ -218,6 +218,34 @@ void LD2420Component::dump_config() {
 }
 
 void LD2420Component::setup() {
+  // Per the LD2420 protocol: the module streams waveform data by default after
+  // power-on. After a software restart, the ESP32 reboots but the LD2420 stays
+  // powered and keeps streaming. The datasheet prescribes:
+  //   1. Send "open command mode" (response will be mixed with waveform data)
+  //   2. Wait ~100ms and flush serial buffer
+  //   3. Send "open command mode" again and parse the response
+  uint8_t cmd_buffer[14];
+  uint8_t len = 0;
+  uint32_t header = CMD_FRAME_HEADER;
+  uint16_t data_length = 4;  // command (2) + protocol ver (2)
+  uint16_t command = CMD_ENABLE_CONF;
+  uint16_t protocol_ver = CMD_PROTOCOL_VER;
+  uint32_t footer = CMD_FRAME_FOOTER;
+  memcpy(&cmd_buffer[len], &header, sizeof(header));
+  len += sizeof(header);
+  memcpy(&cmd_buffer[len], &data_length, sizeof(data_length));
+  len += sizeof(data_length);
+  memcpy(&cmd_buffer[len], &command, sizeof(command));
+  len += sizeof(command);
+  memcpy(&cmd_buffer[len], &protocol_ver, sizeof(protocol_ver));
+  len += sizeof(protocol_ver);
+  memcpy(&cmd_buffer[len], &footer, sizeof(footer));
+  len += sizeof(footer);
+  this->write_array(cmd_buffer, len);
+  delay(100);  // NOLINT
+  while (this->available())
+    this->read();
+
   if (this->set_config_mode(true) == LD2420_ERROR_TIMEOUT) {
     ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
     this->mark_failed();
