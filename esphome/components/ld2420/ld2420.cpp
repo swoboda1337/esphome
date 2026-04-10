@@ -223,7 +223,11 @@ void LD2420Component::setup() {
   // The datasheet prescribes sending "open command mode" once (response will
   // be mixed with waveform data), waiting ~100ms, flushing, then sending it
   // again for a clean response.
-  this->set_config_mode(true);
+  // Send the command frame directly to avoid the retry loop in send_cmd_from_array
+  // which would waste up to 3 seconds parsing garbled responses.
+  static constexpr uint8_t OPEN_CMD[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x04, 0x00, 0xFF,
+                                         0x00, 0x02, 0x00, 0x04, 0x03, 0x02, 0x01};
+  this->write_array(OPEN_CMD, sizeof(OPEN_CMD));
   delay(100);  // NOLINT
   while (this->available())
     this->read();
