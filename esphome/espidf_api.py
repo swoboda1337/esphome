@@ -111,11 +111,31 @@ def run_reconfigure() -> int:
     return run_idf_py(*_get_sdkconfig_args(), "reconfigure")
 
 
+def _configure_stamp_path() -> Path:
+    """Path to the stamp file we touch after a successful configure.
+
+    Comparing Python-level config inputs against ``CMakeCache.txt``
+    doesn't work: cmake doesn't always update the cache's mtime on
+    reconfigure, so a one-off mtime bump on ``CMakeLists.txt`` could
+    leave ``has_outdated_files`` stuck returning True forever. We
+    maintain our own stamp file instead — it's touched explicitly at
+    the end of every successful configure path inside ``run_compile``,
+    guaranteeing its mtime is newer than everything we just touched.
+    """
+    return CORE.relative_build_path("build", ".esphome_configure.stamp")
+
+
+def _touch_configure_stamp() -> None:
+    stamp = _configure_stamp_path()
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    stamp.touch()
+
+
 def has_outdated_files():
     """Check if the build configuration is stale.
 
     Returns True if required build files are missing or if configuration inputs
-    are newer than the generated CMake/Ninja build artifacts.
+    are newer than the last successful configure stamp.
     """
     cmakecache_txt_path = CORE.relative_build_path("build/CMakeCache.txt")
 
@@ -127,6 +147,7 @@ def has_outdated_files():
     )
     dependency_lock_path = CORE.relative_build_path("dependencies.lock")
     build_ninja_path = CORE.relative_build_path("build/build.ninja")
+    configure_stamp = _configure_stamp_path()
 
     if not os.path.isdir(build_config_path) or not os.listdir(build_config_path):
         return True
@@ -134,14 +155,16 @@ def has_outdated_files():
         return True
     if not os.path.isfile(build_ninja_path):
         return True
+    if not configure_stamp.is_file():
+        return True
     if os.path.isfile(dependency_lock_path) and os.path.getmtime(
         dependency_lock_path
     ) > os.path.getmtime(build_ninja_path):
         return True
 
-    cmakecache_txt_mtime = os.path.getmtime(cmakecache_txt_path)
+    stamp_mtime = os.path.getmtime(configure_stamp)
     return any(
-        os.path.getmtime(f) > cmakecache_txt_mtime
+        os.path.getmtime(f) > stamp_mtime
         for f in [
             _get_idf_path(),
             cmakelists_txt_build_path,
@@ -151,13 +174,6 @@ def has_outdated_files():
         ]
         if f and os.path.exists(f)
     )
-
-
-def need_reconfigure() -> bool:
-    from esphome.build_gen.espidf import has_discovered_components
-
-    # We need to reconfigure either if the files are outdated or if there is no component discovered
-    return has_outdated_files() or not has_discovered_components()
 
 
 def _patch_memory_segments():
@@ -208,15 +224,28 @@ def _patch_memory_segments():
 def run_compile(config, verbose: bool) -> int:
     """Compile the ESP-IDF project.
 
-    Uses two-phase configure to auto-discover available components:
-    1. If no previous build, configure with minimal REQUIRES to discover components
-    2. Regenerate CMakeLists.txt with discovered components
-    3. Run full build
-    """
-    from esphome.build_gen.espidf import write_project
+    On the first build we use a two-phase configure to auto-discover
+    available ESP-IDF components:
 
-    # Check if we need to do discovery phase
-    if need_reconfigure():
+    1. Write a minimal CMakeLists.txt with an empty ``REQUIRES`` list.
+    2. Run ``idf.py reconfigure`` so cmake generates
+       ``build/project_description.json`` with the component list.
+    3. Write the real CMakeLists.txt with the discovered components.
+    4. Run ``idf.py reconfigure`` again so the build tree is consistent
+       with the full component list, and touch a configure stamp so
+       ``has_outdated_files`` knows this configuration is up to date.
+
+    On subsequent builds (components already discovered from a previous
+    run), skip the discovery phase entirely: if the Python-level config
+    changed we write the final CMakeLists.txt directly, reconfigure
+    once, and re-touch the stamp; otherwise we go straight to
+    ``idf.py build`` and let ninja's own dependency tracking decide
+    what needs rebuilding.
+    """
+    from esphome.build_gen.espidf import has_discovered_components, write_project
+
+    if not has_discovered_components():
+        # First-time configure — run the two-phase discovery.
         _LOGGER.info("Discovering available ESP-IDF components...")
         write_project(minimal=True)
         rc = run_reconfigure()
@@ -225,14 +254,24 @@ def run_compile(config, verbose: bool) -> int:
             return rc
         _LOGGER.info("Regenerating CMakeLists.txt with discovered components...")
         write_project(minimal=False)
-        if CORE.testing_mode:
-            # Reconfigure again so cmake is up to date with the full component
-            # list. This ensures idf.py build won't re-run cmake, which would
-            # regenerate memory.ld and wipe the DRAM/IRAM patches applied below.
-            rc = run_reconfigure()
-            if rc != 0:
-                _LOGGER.error("Reconfigure with discovered components failed")
-                return rc
+        rc = run_reconfigure()
+        if rc != 0:
+            _LOGGER.error("Reconfigure with discovered components failed")
+            return rc
+        _touch_configure_stamp()
+    elif has_outdated_files():
+        # Components already cached, but some Python-level config input
+        # changed (or this is the first build after the stamp file was
+        # introduced and needs healing). Write the final CMakeLists.txt
+        # once, reconfigure once, then refresh the stamp so subsequent
+        # builds skip straight to ninja.
+        _LOGGER.info("Regenerating ESP-IDF project files...")
+        write_project(minimal=False)
+        rc = run_reconfigure()
+        if rc != 0:
+            _LOGGER.error("Reconfigure failed")
+            return rc
+        _touch_configure_stamp()
 
     # In testing mode, generate the linker script first, patch DRAM/IRAM sizes,
     # then build. memory.ld is regenerated by ninja during the build phase,

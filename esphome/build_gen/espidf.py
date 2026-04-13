@@ -54,8 +54,13 @@ def get_project_cmakelists() -> str:
     variant = get_esp32_variant()
     idf_target = variant.lower().replace("-", "")
 
-    # Extract compile definitions from build flags (-DXXX -> XXX)
-    compile_defs = [flag for flag in CORE.build_flags if flag.startswith("-D")]
+    # Extract compile definitions from build flags (-DXXX -> XXX).
+    # CORE.build_flags is a set, so sort for deterministic output —
+    # otherwise Python hash randomization reshuffles the order on every
+    # invocation, write_file_if_changed rewrites CMakeLists.txt on every
+    # build, and cmake re-runs, invalidating every .o file via the
+    # regenerated build/toolchain/cxxflags response file.
+    compile_defs = sorted(flag for flag in CORE.build_flags if flag.startswith("-D"))
     extra_compile_options = "\n".join(
         f'idf_build_set_property(COMPILE_OPTIONS "{compile_def}" APPEND)'
         for compile_def in compile_defs
