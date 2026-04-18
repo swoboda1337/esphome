@@ -581,6 +581,8 @@ class EsphomeCore:
         self.main_statements: list[Statement] = []
         # A list of statements to insert in the global block (includes and global variables)
         self.global_statements: list[Statement] = []
+        # Guard so finalize_setup_split is only applied once per codegen run.
+        self._setup_split_done = False
         # A map of platformio libraries to add to the project (shortname: (name, version, repository))
         self.platformio_libraries: dict[str, Library] = {}
         # A set of build flags to set in the platformio project
@@ -632,6 +634,7 @@ class EsphomeCore:
         self.variables = {}
         self.main_statements = []
         self.global_statements = []
+        self._setup_split_done = False
         self.platformio_libraries = {}
         self.build_flags = set()
         self.build_unflags = set()
@@ -1000,6 +1003,66 @@ class EsphomeCore:
         """Track registration of a Controller for ControllerRegistry StaticVector sizing."""
         controller_count = self.data.setdefault(KEY_CONTROLLER_REGISTRY_COUNT, 0)
         self.data[KEY_CONTROLLER_REGISTRY_COUNT] = controller_count + 1
+
+    def finalize_setup_split(self):
+        """Rewrite ``main_statements`` to lift code around a
+        ``SetupSafeModeCheck`` sentinel into two ``noinline`` static helpers
+        (``setup_core`` / ``setup_user``), leaving only three statements in
+        ``setup()`` itself: the two helper calls and the safe_mode check
+        in between.
+
+        Must run after ``flush_tasks`` (so all coroutines have emitted)
+        and before ``cpp_main_section`` / ``cpp_global_section`` are
+        stringified (so both see the finalized state). Idempotent.
+        """
+        from esphome.cpp_generator import RawStatement, SetupSafeModeCheck, statement
+
+        if getattr(self, "_setup_split_done", False):
+            return
+
+        marker_index = None
+        marker: SetupSafeModeCheck | None = None
+        for i, exp in enumerate(self.main_statements):
+            if isinstance(exp, SetupSafeModeCheck):
+                marker_index = i
+                marker = exp
+                break
+        if marker_index is None or marker is None:
+            return
+        self._setup_split_done = True
+
+        def _render(statements):
+            return "\n".join(str(statement(s)).rstrip() for s in statements)
+
+        core_body = _render(self.main_statements[:marker_index])
+        user_body = _render(self.main_statements[marker_index + 1 :])
+
+        # Emit the two helpers at file scope above setup(). noinline keeps
+        # them as separate frames -- without it, GCC at -Os inlines single-
+        # call static functions and the split collapses back to one frame.
+        # External linkage (matches the forward declarations in
+        # component.h / application.h that grant friend access). noinline +
+        # noclone fight GCC's -Os inliner, which otherwise folds single-
+        # call functions back into setup() via -finline-functions-called-once
+        # and collapses the split. Whether the compiler ultimately honors
+        # the hint depends on the build; the split is still a functional
+        # win (safe_mode return semantics) even if frames collapse.
+        helper_attr = "__attribute__((noinline, noclone))"
+        self.global_statements.append(
+            RawStatement(
+                f"void {helper_attr} setup_core() {{\n"
+                f"{core_body}\n"
+                "}\n"
+                f"void {helper_attr} setup_user() {{\n"
+                f"{user_body}\n"
+                "}"
+            )
+        )
+        self.main_statements = [
+            RawStatement("setup_core();"),
+            marker,
+            RawStatement("setup_user();"),
+        ]
 
     @property
     def cpp_main_section(self):

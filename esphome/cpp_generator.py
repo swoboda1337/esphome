@@ -410,6 +410,30 @@ class RawStatement(Statement):
         return self.text
 
 
+class SetupSafeModeCheck(Statement):
+    """Sentinel for the safe_mode early-return check in the generated setup().
+
+    Also marks the split point used by ``EsphomeCore.finalize_setup_split``:
+    statements emitted before this sentinel go into a static ``setup_core``
+    helper, statements emitted after go into a static ``setup_user`` helper,
+    and the sentinel itself lands in ``setup()`` between the two calls so the
+    ``return`` exits ``setup()`` (not a lambda) when safe mode triggers.
+
+    Splitting bounds each helper's stack frame and lets ``App.setup()`` run
+    with a nearly-empty stack above it, which materially helps safe_mode
+    recovery on configs where the generated ``setup()`` would otherwise
+    exceed the task stack.
+    """
+
+    __slots__ = ("condition",)
+
+    def __init__(self, condition: str):
+        self.condition = condition
+
+    def __str__(self):
+        return f"if ({self.condition}) return;"
+
+
 class ExpressionStatement(Statement):
     __slots__ = ("expression",)
 

@@ -19,6 +19,7 @@ from esphome.cpp_generator import (  # noqa: F401
     Pvariable,
     RawExpression,
     RawStatement,
+    SetupSafeModeCheck,
     Statement,
     StructInitializer,
     TemplateArguments,

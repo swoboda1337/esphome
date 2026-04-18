@@ -853,6 +853,72 @@ class TestEsphomeCore:
         target.testing_ensure_platform_registered("sensor")
         assert target.platform_counts["sensor"] == 3
 
+    def test_finalize_setup_split__noop_without_marker(self, target):
+        """Without a SetupSafeModeCheck, finalize_setup_split leaves state alone."""
+        from esphome.cpp_generator import RawStatement
+
+        target.main_statements = [RawStatement("a();"), RawStatement("b();")]
+        target.global_statements = []
+
+        target.finalize_setup_split()
+
+        assert len(target.main_statements) == 2
+        assert target.global_statements == []
+
+    def test_finalize_setup_split__extracts_helpers_when_marker_present(self, target):
+        """With a SetupSafeModeCheck, main_statements shrinks to 3 entries and
+        the two helper bodies are appended to global_statements."""
+        from esphome.cpp_generator import RawStatement, SetupSafeModeCheck
+
+        target.main_statements = [
+            RawStatement("core1();"),
+            RawStatement("core2();"),
+            SetupSafeModeCheck("should_enter()"),
+            RawStatement("user1();"),
+        ]
+        target.global_statements = []
+
+        target.finalize_setup_split()
+
+        # setup() body is now three statements: setup_core, check, setup_user.
+        assert len(target.main_statements) == 3
+        rendered_main = "\n".join(str(s) for s in target.main_statements)
+        assert "setup_core();" in rendered_main
+        assert "if (should_enter()) return;" in rendered_main
+        assert "setup_user();" in rendered_main
+
+        # Helper definitions land in global_statements with attributes
+        # that keep GCC's -Os inliner from collapsing the split.
+        assert len(target.global_statements) == 1
+        helpers = str(target.global_statements[0])
+        assert "noinline" in helpers and "setup_core()" in helpers
+        assert "core1();" in helpers and "core2();" in helpers
+        assert "noinline" in helpers and "setup_user()" in helpers
+        assert "user1();" in helpers
+        # The original "core" statements must not also still be in main.
+        assert "core1();" not in rendered_main
+        assert "user1();" not in rendered_main
+
+    def test_finalize_setup_split__idempotent(self, target):
+        """Calling finalize_setup_split twice is a no-op the second time."""
+        from esphome.cpp_generator import RawStatement, SetupSafeModeCheck
+
+        target.main_statements = [
+            RawStatement("core1();"),
+            SetupSafeModeCheck("cond"),
+            RawStatement("user1();"),
+        ]
+        target.global_statements = []
+
+        target.finalize_setup_split()
+        first_main = list(target.main_statements)
+        first_globals = list(target.global_statements)
+
+        target.finalize_setup_split()
+
+        assert target.main_statements == first_main
+        assert target.global_statements == first_globals
+
     def test_add_library__extracts_short_name_from_path(self, target):
         """Test add_library extracts short name from library paths like owner/lib."""
         target.data[const.KEY_CORE] = {

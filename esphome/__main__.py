@@ -603,6 +603,7 @@ def generate_cpp_contents(config: ConfigType) -> None:
             CORE.add_job(coro, conf)
 
     CORE.flush_tasks()
+    CORE.finalize_setup_split()
 
 
 def write_cpp_file(native_idf: bool = False) -> int:

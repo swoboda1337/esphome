@@ -10,7 +10,7 @@ from esphome.const import (
     KEY_PAST_SAFE_MODE,
 )
 from esphome.core import CORE, CoroPriority, coroutine_with_priority
-from esphome.cpp_generator import RawExpression
+from esphome.cpp_generator import SetupSafeModeCheck
 
 CODEOWNERS = ["@paulmonigatti", "@jsuanet", "@kbx81"]
 
@@ -87,7 +87,7 @@ async def to_code(config):
             config[CONF_REBOOT_TIMEOUT],
             config[CONF_BOOT_IS_GOOD_AFTER],
         )
-        cg.add(RawExpression(f"if ({condition}) return"))
+        cg.add(SetupSafeModeCheck(str(condition)))
 
     CORE.data[CONF_SAFE_MODE] = {}
     CORE.data[CONF_SAFE_MODE][KEY_PAST_SAFE_MODE] = True
