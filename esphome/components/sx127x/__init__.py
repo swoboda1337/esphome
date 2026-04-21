@@ -19,6 +19,7 @@ CONF_BITSYNC = "bitsync"
 CONF_CODING_RATE = "coding_rate"
 CONF_DEVIATION = "deviation"
 CONF_DIO0_PIN = "dio0_pin"
+CONF_DIO1_PIN = "dio1_pin"
 CONF_MODULATION = "modulation"
 CONF_PA_PIN = "pa_pin"
 CONF_PA_POWER = "pa_power"
@@ -168,6 +169,8 @@ def validate_config(config):
             raise cv.Invalid("Minimum 'preamble_size' is 6 with LORA")
         if config[CONF_SPREADING_FACTOR] == 6 and config[CONF_PAYLOAD_LENGTH] == 0:
             raise cv.Invalid("Payload length must be set when spreading factor is 6")
+        if config[CONF_PAYLOAD_LENGTH] > 255:
+            raise cv.Invalid("Payload length must be <= 255 with LORA")
     else:
         if config[CONF_BANDWIDTH] == "500_0kHz":
             raise cv.Invalid(f"{config[CONF_BANDWIDTH]} is only available with LORA")
@@ -177,8 +180,10 @@ def validate_config(config):
             raise cv.Invalid("Config 'packet_mode' required with FSK/OOK")
         if config[CONF_PACKET_MODE] and CONF_DIO0_PIN not in config:
             raise cv.Invalid("Config 'dio0_pin' required in packet mode")
-        if config[CONF_PAYLOAD_LENGTH] > 64:
-            raise cv.Invalid("Payload length must be <= 64 with FSK/OOK")
+        if config[CONF_PAYLOAD_LENGTH] > 64 and CONF_DIO1_PIN not in config:
+            raise cv.Invalid(
+                "Config 'dio1_pin' required when 'payload_length' exceeds the 64-byte FIFO"
+            )
     if config[CONF_PA_PIN] == "RFO" and config[CONF_PA_POWER] > 15:
         raise cv.Invalid("PA power must be <= 15 dbm when using the RFO pin")
     if config[CONF_PA_PIN] == "BOOST" and config[CONF_PA_POWER] < 2:
@@ -200,6 +205,7 @@ CONFIG_SCHEMA = (
                 cv.frequency, cv.int_range(min=0, max=100000)
             ),
             cv.Optional(CONF_DIO0_PIN): pins.internal_gpio_input_pin_schema,
+            cv.Optional(CONF_DIO1_PIN): pins.internal_gpio_input_pin_schema,
             cv.Required(CONF_FREQUENCY): cv.All(
                 cv.frequency, cv.int_range(min=int(137e6), max=int(1020e6))
             ),
@@ -209,7 +215,7 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_PA_POWER, default=17): cv.int_range(min=0, max=17),
             cv.Optional(CONF_PA_RAMP, default="40us"): cv.enum(RAMP),
             cv.Optional(CONF_PACKET_MODE): cv.boolean,
-            cv.Optional(CONF_PAYLOAD_LENGTH, default=0): cv.int_range(min=0, max=256),
+            cv.Optional(CONF_PAYLOAD_LENGTH, default=0): cv.int_range(min=0, max=2047),
             cv.Optional(CONF_PREAMBLE_DETECT, default=0): cv.int_range(min=0, max=3),
             cv.Optional(CONF_PREAMBLE_ERRORS, default=0): cv.int_range(min=0, max=31),
             cv.Optional(CONF_PREAMBLE_POLARITY, default=0xAA): cv.All(
@@ -247,6 +253,9 @@ async def to_code(config):
     if CONF_DIO0_PIN in config:
         dio0_pin = await cg.gpio_pin_expression(config[CONF_DIO0_PIN])
         cg.add(var.set_dio0_pin(dio0_pin))
+    if CONF_DIO1_PIN in config:
+        dio1_pin = await cg.gpio_pin_expression(config[CONF_DIO1_PIN])
+        cg.add(var.set_dio1_pin(dio1_pin))
     rst_pin = await cg.gpio_pin_expression(config[CONF_RST_PIN])
     cg.add(var.set_rst_pin(rst_pin))
     cg.add(var.set_auto_cal(config[CONF_AUTO_CAL]))

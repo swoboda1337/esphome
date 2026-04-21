@@ -19,6 +19,8 @@ static const uint8_t BW_FSK_OOK[22] = {RX_BW_2_6,   RX_BW_3_1,   RX_BW_3_9,   RX
                                        RX_BW_166_7, RX_BW_200_0, RX_BW_250_0, RX_BW_250_0};
 static const int32_t RSSI_OFFSET_HF = 157;
 static const int32_t RSSI_OFFSET_LF = 164;
+static const uint8_t FSK_FIFO_SIZE = 64;
+static const uint8_t FSK_FIFO_THRESHOLD = 16;
 
 uint8_t SX127x::read_register_(uint8_t reg) {
   this->enable();
@@ -35,20 +37,20 @@ void SX127x::write_register_(uint8_t reg, uint8_t value) {
   this->disable();
 }
 
-void SX127x::read_fifo_(std::vector<uint8_t> &packet) {
+void SX127x::read_fifo_(uint8_t *data, size_t size) {
   this->enable();
   this->write_byte(REG_FIFO & 0x7F);
-  for (auto &byte : packet) {
-    byte = this->transfer_byte(0x00);
+  for (size_t i = 0; i < size; i++) {
+    data[i] = this->transfer_byte(0x00);
   }
   this->disable();
 }
 
-void SX127x::write_fifo_(const std::vector<uint8_t> &packet) {
+void SX127x::write_fifo_(const uint8_t *data, size_t size) {
   this->enable();
   this->write_byte(REG_FIFO | 0x80);
-  for (const auto &byte : packet) {
-    this->transfer_byte(byte);
+  for (size_t i = 0; i < size; i++) {
+    this->transfer_byte(data[i]);
   }
   this->disable();
 }
@@ -63,6 +65,12 @@ void SX127x::setup() {
   if (this->dio0_pin_) {
     this->dio0_pin_->setup();
     this->dio0_pin_->attach_interrupt(&SX127x::gpio_intr, this, gpio::INTERRUPT_RISING_EDGE);
+  }
+
+  // setup dio1
+  if (this->dio1_pin_) {
+    this->dio1_pin_->setup();
+    this->dio1_pin_->attach_interrupt(&SX127x::gpio_intr, this, gpio::INTERRUPT_RISING_EDGE);
   }
 
   // start spi
@@ -159,15 +167,12 @@ void SX127x::configure_fsk_ook_() {
   // configure packet mode
   if (this->packet_mode_) {
     uint8_t crc_mode = (this->crc_enable_) ? CRC_ON : CRC_OFF;
-    this->write_register_(REG_FIFO_THRESH, TX_START_FIFO_EMPTY);
-    if (this->payload_length_ > 0) {
-      this->write_register_(REG_PAYLOAD_LENGTH_LSB, this->payload_length_);
-      this->write_register_(REG_PACKET_CONFIG_1, crc_mode | FIXED_LENGTH);
-    } else {
-      this->write_register_(REG_PAYLOAD_LENGTH_LSB, this->get_max_packet_size() - 1);
-      this->write_register_(REG_PACKET_CONFIG_1, crc_mode | VARIABLE_LENGTH);
-    }
-    this->write_register_(REG_PACKET_CONFIG_2, PACKET_MODE);
+    uint8_t length_mode = (this->payload_length_ > 0) ? FIXED_LENGTH : VARIABLE_LENGTH;
+    uint32_t len = (this->payload_length_ > 0) ? this->payload_length_ : this->get_max_packet_size();
+    this->write_register_(REG_PAYLOAD_LENGTH_LSB, len & 0xFF);
+    this->write_register_(REG_PACKET_CONFIG_1, CRC_AUTO_CLEAR_OFF | crc_mode | length_mode);
+    this->write_register_(REG_PACKET_CONFIG_2, PACKET_MODE | (len >> 8));
+    this->write_register_(REG_FIFO_THRESH, TX_START_FIFO_EMPTY | FSK_FIFO_THRESHOLD);
   } else {
     this->write_register_(REG_PACKET_CONFIG_2, CONTINUOUS_MODE);
   }
@@ -251,10 +256,11 @@ size_t SX127x::get_max_packet_size() {
     return this->payload_length_;
   }
   if (this->modulation_ == MOD_LORA) {
-    return 256;
-  } else {
-    return 64;
+    // lora payload length is 8-bit and must be non-zero
+    return UINT8_MAX;
   }
+  // fsk/ook variable-length: no dio1 means length byte + data must fit in fifo
+  return this->dio1_pin_ != nullptr ? UINT8_MAX : (FSK_FIFO_SIZE - 1);
 }
 
 SX127xError SX127x::transmit_packet(const std::vector<uint8_t> &packet) {
@@ -273,6 +279,7 @@ SX127xError SX127x::transmit_packet(const std::vector<uint8_t> &packet) {
   }
 
   SX127xError ret = SX127xError::NONE;
+  uint32_t start = millis();
   if (this->modulation_ == MOD_LORA) {
     this->set_mode_standby();
     if (this->payload_length_ == 0) {
@@ -280,20 +287,42 @@ SX127xError SX127x::transmit_packet(const std::vector<uint8_t> &packet) {
     }
     this->write_register_(REG_IRQ_FLAGS, 0xFF);
     this->write_register_(REG_FIFO_ADDR_PTR, 0);
-    this->write_fifo_(packet);
+    this->write_fifo_(packet.data(), packet.size());
     this->set_mode_tx();
   } else {
     this->set_mode_standby();
+    size_t total = packet.size();
+    size_t written = FSK_FIFO_SIZE;
+    // variable-length: first fifo byte is the length, consumes one slot of the initial chunk
     if (this->payload_length_ == 0) {
-      this->write_register_(REG_FIFO, packet.size());
+      this->write_register_(REG_FIFO, (uint8_t) total);
+      written -= 1;
     }
-    this->write_fifo_(packet);
+    written = std::min(total, written);
+    this->write_fifo_(packet.data(), written);
     this->set_mode_tx();
+
+    // stream remaining bytes, refilling each time fifo drains below threshold (dio1=fifolevel)
+    while (written < total && ret == SX127xError::NONE) {
+      while (this->dio1_pin_->digital_read()) {
+        if (millis() - start > 4000) {
+          ESP_LOGE(TAG, "Transmit packet failure");
+          ret = SX127xError::TIMEOUT;
+          break;
+        }
+      }
+      if (ret != SX127xError::NONE) {
+        break;
+      }
+      // fifo is ≤ threshold so topping up by (size - threshold) bytes cannot overflow
+      size_t chunk = std::min(total - written, (size_t) (FSK_FIFO_SIZE - FSK_FIFO_THRESHOLD));
+      this->write_fifo_(packet.data() + written, chunk);
+      written += chunk;
+    }
   }
 
   // wait until transmit completes, typically the delay will be less than 100 ms
-  uint32_t start = millis();
-  while (!this->dio0_pin_->digital_read()) {
+  while (ret == SX127xError::NONE && !this->dio0_pin_->digital_read()) {
     if (millis() - start > 4000) {
       ESP_LOGE(TAG, "Transmit packet failure");
       ret = SX127xError::TIMEOUT;
@@ -317,11 +346,11 @@ void SX127x::call_listeners_(const std::vector<uint8_t> &packet, float rssi, flo
 
 void SX127x::loop() {
   this->disable_loop();
-  if (this->dio0_pin_ == nullptr || !this->dio0_pin_->digital_read()) {
-    return;
-  }
 
   if (this->modulation_ == MOD_LORA) {
+    if (this->dio0_pin_ == nullptr || !this->dio0_pin_->digital_read()) {
+      return;
+    }
     uint8_t status = this->read_register_(REG_IRQ_FLAGS);
     this->write_register_(REG_IRQ_FLAGS, 0xFF);
     if ((status & PAYLOAD_CRC_ERROR) == 0) {
@@ -331,7 +360,7 @@ void SX127x::loop() {
       int8_t snr = (int8_t) this->read_register_(REG_PKT_SNR_VALUE);
       this->packet_.resize(bytes);
       this->write_register_(REG_FIFO_ADDR_PTR, addr);
-      this->read_fifo_(this->packet_);
+      this->read_fifo_(this->packet_.data(), this->packet_.size());
       if (this->frequency_ > 700000000) {
         this->call_listeners_(this->packet_, (float) rssi - RSSI_OFFSET_HF, (float) snr / 4);
       } else {
@@ -339,13 +368,39 @@ void SX127x::loop() {
       }
     }
   } else if (this->packet_mode_) {
-    uint8_t payload_length = this->payload_length_;
-    if (payload_length == 0) {
-      payload_length = this->read_register_(REG_FIFO);
+    bool dio0_high = this->dio0_pin_ != nullptr && this->dio0_pin_->digital_read();
+    bool dio1_high = this->dio1_pin_ != nullptr && this->dio1_pin_->digital_read();
+    if (!dio0_high && !dio1_high) {
+      return;
     }
-    this->packet_.resize(payload_length);
-    this->read_fifo_(this->packet_);
-    this->call_listeners_(this->packet_, 0.0f, 0.0f);
+
+    // new packet: seed byte counter from config (fixed) or first fifo byte (variable)
+    if (this->payload_remaining_ == 0) {
+      if (this->payload_length_ > 0) {
+        this->payload_remaining_ = this->payload_length_;
+      } else {
+        this->payload_remaining_ = this->read_register_(REG_FIFO);
+      }
+      this->packet_.resize(this->payload_remaining_);
+    }
+
+    if (dio0_high) {
+      // payloadready: capture crc status before draining (crcok clears when fifo empties)
+      bool crc_ok = !this->crc_enable_ || (this->read_register_(REG_IRQ_FLAGS_2) & FSK_CRC_OK);
+      size_t offset = this->packet_.size() - this->payload_remaining_;
+      this->read_fifo_(this->packet_.data() + offset, this->payload_remaining_);
+      this->payload_remaining_ = 0;
+      if (crc_ok) {
+        this->call_listeners_(this->packet_, 0.0f, 0.0f);
+      }
+    } else {
+      // stop streaming once tail fits in fifo so payloadready/crcok can latch
+      while (this->payload_remaining_ >= FSK_FIFO_SIZE && this->dio1_pin_->digital_read()) {
+        size_t offset = this->packet_.size() - this->payload_remaining_;
+        this->read_fifo_(this->packet_.data() + offset, FSK_FIFO_THRESHOLD);
+        this->payload_remaining_ -= FSK_FIFO_THRESHOLD;
+      }
+    }
   }
 }
 
@@ -393,6 +448,7 @@ void SX127x::set_mode_(uint8_t modulation, uint8_t mode) {
 }
 
 void SX127x::set_mode_rx() {
+  this->payload_remaining_ = 0;
   this->set_mode_(this->modulation_, MODE_RX);
   if (this->modulation_ == MOD_LORA) {
     this->write_register_(REG_IRQ_FLAGS_MASK, 0x00);
@@ -417,6 +473,7 @@ void SX127x::dump_config() {
   LOG_PIN("  CS Pin: ", this->cs_);
   LOG_PIN("  RST Pin: ", this->rst_pin_);
   LOG_PIN("  DIO0 Pin: ", this->dio0_pin_);
+  LOG_PIN("  DIO1 Pin: ", this->dio1_pin_);
   const char *pa_pin = "RFO";
   if (this->pa_pin_ == PA_PIN_BOOST) {
     pa_pin = "BOOST";

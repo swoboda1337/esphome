@@ -46,6 +46,8 @@ enum SX127xReg : uint8_t {
   REG_PAYLOAD_LENGTH_LSB = 0x32,
   REG_FIFO_THRESH = 0x35,
   REG_IMAGE_CAL = 0x3B,
+  REG_IRQ_FLAGS_1 = 0x3E,
+  REG_IRQ_FLAGS_2 = 0x3F,
   // LoRa registers
   REG_FIFO_ADDR_PTR = 0x0D,
   REG_FIFO_TX_BASE_ADDR = 0x0E,
@@ -224,6 +226,29 @@ enum SX127xPacketConfig1 : uint8_t {
   FIXED_LENGTH = 0x00,
   CRC_ON = 0x10,
   CRC_OFF = 0x00,
+  CRC_AUTO_CLEAR_OFF = 0x08,
+};
+
+enum SX127xIrqFlags1 : uint8_t {
+  FSK_MODE_READY = 0x80,
+  FSK_RX_READY = 0x40,
+  FSK_TX_READY = 0x20,
+  FSK_PLL_LOCK = 0x10,
+  FSK_RSSI = 0x08,
+  FSK_TIMEOUT = 0x04,
+  FSK_PREAMBLE_DETECT = 0x02,
+  FSK_SYNC_ADDRESS_MATCH = 0x01,
+};
+
+enum SX127xIrqFlags2 : uint8_t {
+  FSK_FIFO_FULL = 0x80,
+  FSK_FIFO_EMPTY = 0x40,
+  FSK_FIFO_LEVEL = 0x20,
+  FSK_FIFO_OVERRUN = 0x10,
+  FSK_PACKET_SENT = 0x08,
+  FSK_PAYLOAD_READY = 0x04,
+  FSK_CRC_OK = 0x02,
+  FSK_LOW_BAT = 0x01,
 };
 
 enum SX127xPacketConfig2 : uint8_t {
