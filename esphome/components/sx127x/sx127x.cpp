@@ -374,6 +374,19 @@ void SX127x::loop() {
       return;
     }
 
+    // capture irq flags once; crcok/payloadready clear when fifo empties after drain
+    uint8_t flags = this->read_register_(REG_IRQ_FLAGS_2);
+
+    // overrun aborts the in-flight packet on-chip; w1c clears the flag and the fifo, dropping
+    // any bytes already received for the next packet — we'll pick it up on the following wake
+    if (flags & FSK_FIFO_OVERRUN) {
+      ESP_LOGE(TAG, "Fifo overrun, dropping packet");
+      this->payload_remaining_ = 0;
+      this->packet_.clear();
+      this->write_register_(REG_IRQ_FLAGS_2, FSK_FIFO_OVERRUN);
+      return;
+    }
+
     // new packet: seed byte counter from config (fixed) or first fifo byte (variable)
     if (this->payload_remaining_ == 0) {
       if (this->payload_length_ > 0) {
@@ -385,15 +398,12 @@ void SX127x::loop() {
     }
 
     if (dio0_high) {
-      // payloadready: capture packet status before draining (flags clear when fifo empties)
-      uint8_t flags = this->read_register_(REG_IRQ_FLAGS_2);
+      // payloadready: drain remaining bytes, publish if crc ok
       size_t offset = this->packet_.size() - this->payload_remaining_;
       this->read_fifo_(this->packet_.data() + offset, this->payload_remaining_);
       this->payload_remaining_ = 0;
-      if ((!this->crc_enable_ || (flags & FSK_CRC_OK)) && !(flags & FSK_FIFO_OVERRUN)) {
+      if (!this->crc_enable_ || (flags & FSK_CRC_OK)) {
         this->call_listeners_(this->packet_, 0.0f, 0.0f);
-      } else if (flags & FSK_FIFO_OVERRUN) {
-        ESP_LOGE(TAG, "Fifo overrun, dropping packet");
       }
     } else {
       // stop streaming once tail fits in fifo so payloadready/crcok can latch
