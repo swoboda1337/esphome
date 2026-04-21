@@ -387,14 +387,13 @@ void SX127x::loop() {
     if (dio0_high) {
       // payloadready: capture packet status before draining (flags clear when fifo empties)
       uint8_t flags = this->read_register_(REG_IRQ_FLAGS_2);
-      bool packet_ok = (!this->crc_enable_ || (flags & FSK_CRC_OK)) && !(flags & FSK_FIFO_OVERRUN);
       if (flags & FSK_FIFO_OVERRUN) {
         ESP_LOGE(TAG, "Fifo overrun, dropping packet");
       }
       size_t offset = this->packet_.size() - this->payload_remaining_;
       this->read_fifo_(this->packet_.data() + offset, this->payload_remaining_);
       this->payload_remaining_ = 0;
-      if (packet_ok) {
+      if ((!this->crc_enable_ || (flags & FSK_CRC_OK)) && !(flags & FSK_FIFO_OVERRUN)) {
         this->call_listeners_(this->packet_, 0.0f, 0.0f);
       }
     } else {
