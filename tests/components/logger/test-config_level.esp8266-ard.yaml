@@ -1,0 +1,18 @@
+esphome:
+  on_boot:
+    then:
+      - logger.log:
+          level: CONFIG
+          format: "CONFIG-level log line"
+      - logger.set_level: CONFIG
+
+logger:
+  id: logger_id
+  level: CONFIG
+  initial_level: INFO
+  logs:
+    mqtt.component: CONFIG
+
+select:
+  - platform: logger
+    name: Logger Level
