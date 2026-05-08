@@ -591,14 +591,14 @@ float BLEClientBase::parse_char_value(uint8_t *value, uint16_t length) {
   if (length == 0)
     return 0;
   if (length == 1)
-    return (float) ((uint8_t) value[0]);
+    return (float) (value[0]);
 
   switch (value[0]) {
     case 0x1:  // boolean.
     case 0x2:  // 2bit.
     case 0x3:  // nibble.
     case 0x4:  // uint8.
-      return (float) ((uint8_t) value[1]);
+      return (float) (value[1]);
     case 0x5:  // uint12.
     case 0x6:  // uint16.
       if (length > 2) {

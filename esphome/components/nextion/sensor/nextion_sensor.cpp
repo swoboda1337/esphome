@@ -78,7 +78,7 @@ void NextionSensor::set_state(float state, bool publish, bool send_to_nextion) {
       if (this->precision_ > 0) {
         double to_multiply = pow(10, this->precision_);
         int state_value = (int) (state * to_multiply);
-        this->nextion_->add_no_result_to_queue_with_set(this, (int) state_value);
+        this->nextion_->add_no_result_to_queue_with_set(this, state_value);
       } else {
         this->nextion_->add_no_result_to_queue_with_set(this, (int) state);
       }

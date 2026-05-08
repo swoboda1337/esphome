@@ -51,7 +51,7 @@ Wl134Component::Rfid134Error Wl134Component::read_packet_() {
     return RFID134_ERROR_PACKET_CHECKSUM;
   }
 
-  if (static_cast<uint8_t>(~checksum) != static_cast<uint8_t>(packet[RFID134_PACKET_CHECKSUM_INVERT])) {
+  if (static_cast<uint8_t>(~checksum) != packet[RFID134_PACKET_CHECKSUM_INVERT]) {
     return RFID134_ERROR_PACKET_CHECKSUM_INVERT;
   }
 

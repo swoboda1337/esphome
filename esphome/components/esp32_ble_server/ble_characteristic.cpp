@@ -107,8 +107,8 @@ void BLECharacteristic::do_create(BLEService *service) {
 #endif
 
   esp_bt_uuid_t uuid = this->uuid_.get_uuid();
-  esp_err_t err = esp_ble_gatts_add_char(service->get_handle(), &uuid, static_cast<esp_gatt_perm_t>(this->permissions_),
-                                         this->properties_, nullptr, &control);
+  esp_err_t err =
+      esp_ble_gatts_add_char(service->get_handle(), &uuid, this->permissions_, this->properties_, nullptr, &control);
 
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "esp_ble_gatts_add_char failed: %d", err);

@@ -59,12 +59,12 @@ static bool ledc_duty_update_pending(ledc_mode_t speed_mode, ledc_channel_t chan
 #endif
 
 float ledc_max_frequency_for_bit_depth(uint8_t bit_depth) {
-  return static_cast<float>(CLOCK_FREQUENCY) / static_cast<float>(1 << bit_depth);
+  return CLOCK_FREQUENCY / static_cast<float>(1 << bit_depth);
 }
 
 float ledc_min_frequency_for_bit_depth(uint8_t bit_depth, bool low_frequency) {
   const float max_div_num = ((1 << MAX_RES_BITS) - 1) / (low_frequency ? 32.0f : 256.0f);
-  return static_cast<float>(CLOCK_FREQUENCY) / (max_div_num * static_cast<float>(1 << bit_depth));
+  return CLOCK_FREQUENCY / (max_div_num * static_cast<float>(1 << bit_depth));
 }
 
 optional<uint8_t> ledc_bit_depth_for_frequency(float frequency) {

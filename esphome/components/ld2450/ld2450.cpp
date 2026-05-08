@@ -330,7 +330,7 @@ void LD2450Component::set_radar_zone(int32_t zone_type, int32_t zone1_x1, int32_
 // Set Zone on LD2450 Sensor
 void LD2450Component::send_set_zone_command_() {
   uint8_t cmd_value[26] = {};
-  uint8_t zone_type_bytes[2] = {static_cast<uint8_t>(this->zone_type_), 0x00};
+  uint8_t zone_type_bytes[2] = {this->zone_type_, 0x00};
   uint8_t area_config[24] = {};
   for (uint8_t i = 0; i < MAX_ZONES; i++) {
     int values[4] = {this->zone_config_[i].x1, this->zone_config_[i].y1, this->zone_config_[i].x2,

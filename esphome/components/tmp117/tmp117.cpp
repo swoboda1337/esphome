@@ -53,7 +53,7 @@ bool TMP117Component::read_data_(int16_t *data) {
 }
 
 bool TMP117Component::read_config_(uint16_t *config) {
-  if (!this->read_byte_16(1, (uint16_t *) config)) {
+  if (!this->read_byte_16(1, config)) {
     ESP_LOGW(TAG, "Reading config failed");
     return false;
   }

@@ -292,11 +292,11 @@ class Application {
   /// WDT_FEED_INTERVAL_MS. The two rate limits are independent so raising
   /// WDT_FEED_INTERVAL_MS does not distort the LED cadence.
   void ESPHOME_ALWAYS_INLINE feed_wdt_with_time(uint32_t time) {
-    if (static_cast<uint32_t>(time - this->last_wdt_feed_) > WDT_FEED_INTERVAL_MS) [[unlikely]] {
+    if ((time - this->last_wdt_feed_) > WDT_FEED_INTERVAL_MS) [[unlikely]] {
       this->feed_wdt_slow_(time);
     }
 #ifdef USE_STATUS_LED
-    if (static_cast<uint32_t>(time - this->last_status_led_service_) > STATUS_LED_DISPATCH_INTERVAL_MS) [[unlikely]] {
+    if ((time - this->last_status_led_service_) > STATUS_LED_DISPATCH_INTERVAL_MS) [[unlikely]] {
       this->service_status_led_slow_(time);
     }
 #endif

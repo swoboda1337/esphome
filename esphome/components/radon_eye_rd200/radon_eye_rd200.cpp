@@ -95,7 +95,7 @@ void RadonEyeRD200::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                this->write_handle_);
       esp_err_t status =
           esp_ble_gattc_write_char(gattc_if, this->parent()->get_conn_id(), this->write_handle_, sizeof(write_command_),
-                                   (uint8_t *) &write_command_, ESP_GATT_WRITE_TYPE_NO_RSP, ESP_GATT_AUTH_REQ_NONE);
+                                   (&write_command_), ESP_GATT_WRITE_TYPE_NO_RSP, ESP_GATT_AUTH_REQ_NONE);
       if (status) {
         ESP_LOGW(TAG, "Error writing 0x%02x command, status=%d", write_command_, status);
       }

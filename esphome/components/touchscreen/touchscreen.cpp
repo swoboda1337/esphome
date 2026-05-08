@@ -153,7 +153,7 @@ int16_t Touchscreen::normalize_(int16_t val, int16_t min_val, int16_t max_val, b
   } else if (val >= max_val) {
     ret = 0xfff;
   } else {
-    ret = (int16_t) ((int) 0xfff * (val - min_val) / (max_val - min_val));
+    ret = (int16_t) (0xfff * (val - min_val) / (max_val - min_val));
   }
 
   ret = (inverted) ? 0xfff - ret : ret;

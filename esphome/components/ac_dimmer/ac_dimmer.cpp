@@ -133,7 +133,7 @@ void IRAM_ATTR HOT AcDimmerDataStore::gpio_intr() {
       if (this->method == DIM_METHOD_LEADING_PULSE) {
         // Minimum pulse time should be enough for the triac to trigger when it is close to the ZC zone
         // this is for brightness near 99%
-        this->disable_time_us = std::max(this->enable_time_us + GATE_ENABLE_TIME, (uint32_t) cycle_time_us / 10);
+        this->disable_time_us = std::max(this->enable_time_us + GATE_ENABLE_TIME, cycle_time_us / 10);
       } else {
         this->gate_pin.digital_write(false);
         this->disable_time_us = this->cycle_time_us;

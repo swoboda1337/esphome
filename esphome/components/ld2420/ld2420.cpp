@@ -886,16 +886,16 @@ void LD2420Component::set_gate_threshold(uint8_t gate) {
 #ifdef USE_NUMBER
 void LD2420Component::init_gate_config_numbers() {
   if (this->gate_timeout_number_ != nullptr) {
-    this->gate_timeout_number_->publish_state(static_cast<uint16_t>(this->current_config.timeout));
+    this->gate_timeout_number_->publish_state(this->current_config.timeout);
   }
   if (this->gate_select_number_ != nullptr) {
     this->gate_select_number_->publish_state(0);
   }
   if (this->min_gate_distance_number_ != nullptr) {
-    this->min_gate_distance_number_->publish_state(static_cast<uint16_t>(this->current_config.min_gate));
+    this->min_gate_distance_number_->publish_state(this->current_config.min_gate);
   }
   if (this->max_gate_distance_number_ != nullptr) {
-    this->max_gate_distance_number_->publish_state(static_cast<uint16_t>(this->current_config.max_gate));
+    this->max_gate_distance_number_->publish_state(this->current_config.max_gate);
   }
   if (this->gate_move_sensitivity_factor_number_ != nullptr) {
     this->gate_move_sensitivity_factor_number_->publish_state(this->gate_move_sensitivity_factor);

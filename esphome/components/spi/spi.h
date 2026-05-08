@@ -285,7 +285,7 @@ class SPIDelegateBitBash : public SPIDelegate {
                      GPIOPin *sdo_pin, GPIOPin *sdi_pin)
       : SPIDelegate(clock, bit_order, mode, cs_pin), clk_pin_(clk_pin), sdo_pin_(sdo_pin), sdi_pin_(sdi_pin) {
     // this calculation is pretty meaningless except at very low bit rates.
-    this->wait_cycle_ = uint32_t(arch_get_cpu_freq_hz()) / this->data_rate_ / 2ULL;
+    this->wait_cycle_ = arch_get_cpu_freq_hz() / this->data_rate_ / 2ULL;
     this->clock_polarity_ = Utility::get_polarity(this->mode_);
     this->clock_phase_ = Utility::get_phase(this->mode_);
   }

@@ -422,7 +422,7 @@ bool INA2XX::read_bus_voltage_(float &volt_out) {
     volt_reading = this->two_complement_(raw, 16);
   }
   if (ret) {
-    volt_out = this->cfg_.vbus_lsb * (float) volt_reading;
+    volt_out = this->cfg_.vbus_lsb * volt_reading;
   }
 
   ESP_LOGV(TAG, "read_bus_voltage_ ret=%s, reading_lsb=%f", OKFAILED(ret), volt_reading);
@@ -447,7 +447,7 @@ bool INA2XX::read_die_temp_c_(float &temp_out) {
     temp_reading = this->two_complement_(raw, 12);
   }
   if (ret) {
-    temp_out = this->cfg_.die_temp_lsb * (float) temp_reading;
+    temp_out = this->cfg_.die_temp_lsb * temp_reading;
   }
 
   ESP_LOGV(TAG, "read_die_temp_c_ ret=%s, reading_lsb=%f", OKFAILED(ret), temp_reading);
@@ -474,7 +474,7 @@ bool INA2XX::read_current_a_(float &amps_out) {
   ESP_LOGV(TAG, "read_current_a_ ret=%s. current_lsb=%f. reading_lsb=%f", OKFAILED(ret), this->current_lsb_,
            amps_reading);
   if (ret) {
-    amps_out = this->current_lsb_ * (float) amps_reading;
+    amps_out = this->current_lsb_ * amps_reading;
   }
 
   return ret;
@@ -535,7 +535,7 @@ bool INA2XX::read_charge_(double &coulombs_out, double &amp_hours_out) {
   ESP_LOGV(TAG, "read_charge_c_ ret=%d, curr_charge=%f + 39-bit overflow_cnt=%" PRIu32, ret, coulombs_reading,
            this->charge_overflows_count_);
   if (ret) {
-    coulombs_out = this->current_lsb_ * (double) coulombs_reading + (double) previous_charge;
+    coulombs_out = this->current_lsb_ * coulombs_reading + (double) previous_charge;
     amp_hours_out = coulombs_out / 3600.0;
   }
   return ret;

@@ -109,7 +109,7 @@ void DFPlayer::play_folder(uint16_t folder, uint16_t file) {
     this->send_cmd_(0x0F, (uint8_t) folder, (uint8_t) file);
   } else if (folder <= 15 && file <= 3000) {
     this->ack_set_is_playing_ = true;
-    this->send_cmd_(0x14, (((uint16_t) folder) << 12) | file);
+    this->send_cmd_(0x14, ((folder) << 12) | file);
   } else {
     ESP_LOGE(TAG, "Cannot play folder %d file %d.", folder, file);
   }

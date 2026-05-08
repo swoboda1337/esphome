@@ -468,7 +468,7 @@ APIError APINoiseFrameHelper::encrypt_noise_message_(uint8_t *buf_start, uint16_
   // Write message header (to be encrypted)
   constexpr uint8_t msg_offset = 3;
   buf_start[msg_offset] = static_cast<uint8_t>(message_type >> 8);      // type high byte
-  buf_start[msg_offset + 1] = static_cast<uint8_t>(message_type);       // type low byte
+  buf_start[msg_offset + 1] = message_type;                             // type low byte
   buf_start[msg_offset + 2] = static_cast<uint8_t>(payload_size >> 8);  // data_len high byte
   buf_start[msg_offset + 3] = static_cast<uint8_t>(payload_size);       // data_len low byte
   // payload data is already in the buffer starting at offset + 7

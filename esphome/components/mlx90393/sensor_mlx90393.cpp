@@ -206,7 +206,7 @@ bool MLX90393Cls::verify_setting_(MLX90393Setting which) {
     }
     case MLX90393_TEMPERATURE_COMPENSATION: {
       read_status = this->mlx_.getTemperatureCompensation(read_value);
-      expected_value = (bool) this->temperature_compensation_;
+      expected_value = this->temperature_compensation_;
       break;
     }
     case MLX90393_HALLCONF: {

@@ -396,7 +396,7 @@ class MipiSpi : public display::Display,
         this->write_cmd_addr_data(0, 0, 0, 0, ptr, w * h, 8);
       }
     } else {
-      for (size_t y = 0; y != static_cast<size_t>(h); y++) {
+      for (size_t y = 0; y != h; y++) {
         if constexpr (BUS_TYPE == BUS_TYPE_SINGLE || BUS_TYPE == BUS_TYPE_SINGLE_16) {
           this->write_array(ptr, w);
         } else if constexpr (BUS_TYPE == BUS_TYPE_QUAD) {

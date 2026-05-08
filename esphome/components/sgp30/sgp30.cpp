@@ -173,7 +173,7 @@ void SGP30Component::send_env_data_() {
   }
   float temperature = NAN;
   if (this->temperature_sensor_ != nullptr) {
-    temperature = float(this->temperature_sensor_->state);
+    temperature = this->temperature_sensor_->state;
   }
   if (std::isnan(temperature) || temperature < -40.0f || temperature > 85.0f) {
     ESP_LOGW(TAG, "Compensation not possible yet: bad temperature value");

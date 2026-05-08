@@ -43,7 +43,7 @@ void SPS30Component::setup() {
 
     for (size_t i = 0; i < 8; ++i) {
       this->serial_number_[i * 2] = static_cast<char>(raw_serial_number[i] >> 8);
-      this->serial_number_[i * 2 + 1] = uint16_t(uint16_t(raw_serial_number[i] & 0xFF));
+      this->serial_number_[i * 2 + 1] = uint16_t(raw_serial_number[i] & 0xFF);
     }
     ESP_LOGV(TAG, "  Serial number: %s", this->serial_number_);
 

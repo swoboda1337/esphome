@@ -79,10 +79,10 @@ void MS5611Component::read_pressure_(uint32_t raw_temperature) {
 void MS5611Component::calculate_values_(uint32_t raw_temperature, uint32_t raw_pressure) {
   const uint32_t c1 = uint32_t(this->prom_[0]);
   const uint32_t c2 = uint32_t(this->prom_[1]);
-  const uint16_t c3 = uint16_t(this->prom_[2]);
-  const uint16_t c4 = uint16_t(this->prom_[3]);
+  const uint16_t c3 = this->prom_[2];
+  const uint16_t c4 = this->prom_[3];
   const int32_t c5 = int32_t(this->prom_[4]);
-  const uint16_t c6 = uint16_t(this->prom_[5]);
+  const uint16_t c6 = this->prom_[5];
   const uint32_t d1 = raw_pressure;
   const int32_t d2 = raw_temperature;
 

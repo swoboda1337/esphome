@@ -60,7 +60,7 @@ int32_t M5Stack8AngleComponent::read_knob_pos_raw(uint8_t channel, AnalogBits bi
 
 int8_t M5Stack8AngleComponent::read_switch() {
   uint8_t out;
-  i2c::ErrorCode err = this->read_register(M5STACK_8ANGLE_REGISTER_DIGITAL_INPUT, (uint8_t *) &out, 1);
+  i2c::ErrorCode err = this->read_register(M5STACK_8ANGLE_REGISTER_DIGITAL_INPUT, (&out), 1);
   if (err == i2c::NO_ERROR) {
     return out ? 1 : 0;
   } else {

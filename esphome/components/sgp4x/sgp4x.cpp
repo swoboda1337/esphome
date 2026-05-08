@@ -175,7 +175,7 @@ void SGP4xComponent::measure_raw_() {
 
   float temperature = NAN;
   if (this->temperature_sensor_ != nullptr) {
-    temperature = float(this->temperature_sensor_->state);
+    temperature = this->temperature_sensor_->state;
   }
   if (std::isnan(temperature) || temperature < -40.0f || temperature > 85.0f) {
     temperature = 25;

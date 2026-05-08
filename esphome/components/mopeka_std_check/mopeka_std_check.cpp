@@ -209,7 +209,7 @@ float MopekaStdCheck::get_lpg_speed_of_sound_(float temperature) {
 }
 
 uint8_t MopekaStdCheck::parse_battery_level_(const mopeka_std_package *message) {
-  const float voltage = (float) ((message->raw_voltage / 256.0f) * 2.0f + 1.5f);
+  const float voltage = ((message->raw_voltage / 256.0f) * 2.0f + 1.5f);
   ESP_LOGVV(TAG, "Sensor battery voltage: %f V", voltage);
   // convert voltage and scale for CR2032
   const float percent = (voltage - 2.2f) / 0.65f * 100.0f;
