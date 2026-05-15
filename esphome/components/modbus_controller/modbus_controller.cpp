@@ -112,9 +112,9 @@ void ModbusController::on_modbus_error(uint8_t function_code, uint8_t exception_
 }
 
 SensorSet ModbusController::find_sensors_(ModbusRegisterType register_type, uint16_t start_address) const {
-  auto reg_it = std::find_if(
-      std::begin(this->register_ranges_), std::end(this->register_ranges_),
-      [=](RegisterRange const &r) { return (r.start_address == start_address && r.register_type == register_type); });
+  auto reg_it = std::ranges::find_if(this->register_ranges_, [=](RegisterRange const &r) {
+    return (r.start_address == start_address && r.register_type == register_type);
+  });
 
   if (reg_it == this->register_ranges_.end()) {
     ESP_LOGE(TAG, "No matching range for sensor found - start_address : 0x%X", start_address);

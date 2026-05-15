@@ -542,7 +542,7 @@ static std::string join_string(std::vector<std::string> options) {
 }
 
 void LvSelectable::set_selected_text(const std::string &text, lv_anim_enable_t anim) {
-  auto index = std::find(this->options_.begin(), this->options_.end(), text);
+  auto index = std::ranges::find(this->options_, text);
   if (index != this->options_.end()) {
     this->set_selected_index(index - this->options_.begin(), anim);
     lv_obj_send_event(this->obj, lv_update_event, nullptr);

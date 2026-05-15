@@ -107,7 +107,6 @@ Checks: >-
   -modernize-use-integer-sign-comparison,
   -modernize-use-nodiscard,
   -modernize-use-nullptr,
-  -modernize-use-ranges,
   -modernize-use-trailing-return-type,
   -mpi-*,
   -objc-*,

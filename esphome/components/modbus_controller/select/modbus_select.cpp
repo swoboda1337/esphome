@@ -23,10 +23,10 @@ void ModbusSelect::parse_and_publish(const std::vector<uint8_t> &data) {
   }
 
   if (!new_state.has_value()) {
-    auto map_it = std::find(this->mapping_.cbegin(), this->mapping_.cend(), value);
+    auto map_it = std::ranges::find(this->mapping_, value);
 
-    if (map_it != this->mapping_.cend()) {
-      size_t idx = std::distance(this->mapping_.cbegin(), map_it);
+    if (map_it != this->mapping_.end()) {
+      size_t idx = std::distance(this->mapping_.begin(), map_it);
       ESP_LOGV(TAG, "Found option %s for value %lld", this->option_at(idx), value);
       this->publish_state(idx);
       return;

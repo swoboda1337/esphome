@@ -10,7 +10,7 @@ void PipsolarOutput::write_state(float state) {
   char tmp[16];
   snprintf(tmp, sizeof(tmp), this->set_command_, state);
 
-  if (std::find(this->possible_values_.begin(), this->possible_values_.end(), state) != this->possible_values_.end()) {
+  if (std::ranges::find(this->possible_values_, state) != this->possible_values_.end()) {
     ESP_LOGD(TAG, "Will write: %s out of value %f / %02.0f", tmp, state, state);
     this->parent_->queue_command(std::string(tmp));
   } else {

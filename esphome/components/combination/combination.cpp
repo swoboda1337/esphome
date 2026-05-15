@@ -193,7 +193,7 @@ void MedianCombinationComponent::handle_new_value(float value) {
     }
   }
 
-  sort(sensor_states.begin(), sensor_states.end());
+  std::ranges::sort(sensor_states);
   size_t sensor_states_size = sensor_states.size();
 
   float median = NAN;
@@ -246,7 +246,7 @@ void RangeCombinationComponent::handle_new_value(float value) {
     return;
   }
 
-  sort(sensor_states.begin(), sensor_states.end());
+  std::ranges::sort(sensor_states);
 
   float range = sensor_states.back() - sensor_states.front();
   this->publish_state(range);

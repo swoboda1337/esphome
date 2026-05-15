@@ -489,7 +489,7 @@ void Scheduler::full_cleanup_removed_items_() {
   }
   this->items_.erase(this->items_.begin() + write, this->items_.end());
   // Rebuild the heap structure since items are no longer in heap order
-  std::make_heap(this->items_.begin(), this->items_.end(), SchedulerItem::cmp);
+  std::ranges::make_heap(this->items_, SchedulerItem::cmp);
   this->to_remove_clear_locked_();
 }
 
@@ -615,7 +615,7 @@ uint32_t HOT Scheduler::call(uint32_t now) {
       LockGuard guard{this->lock_};
       this->items_ = std::move(old_items);
       // Rebuild heap after moving items back
-      std::make_heap(this->items_.begin(), this->items_.end(), SchedulerItem::cmp);
+      std::ranges::make_heap(this->items_, SchedulerItem::cmp);
     }
   }
 #endif /* ESPHOME_DEBUG_SCHEDULER */
@@ -714,7 +714,7 @@ uint32_t HOT Scheduler::call(uint32_t now) {
       // This avoids the to_add_ detour and the overhead of
       // process_to_add_slow_path_() (lock acquisition, vector iteration, clear).
       this->items_.push_back(executed_item);
-      std::push_heap(this->items_.begin(), this->items_.end(), SchedulerItem::cmp);
+      std::ranges::push_heap(this->items_, SchedulerItem::cmp);
     } else {
       // Timeout completed - recycle it
       this->recycle_item_main_loop_(executed_item);
@@ -756,7 +756,7 @@ void HOT Scheduler::process_to_add_slow_path_() {
     }
 
     this->items_.push_back(it);
-    std::push_heap(this->items_.begin(), this->items_.end(), SchedulerItem::cmp);
+    std::ranges::push_heap(this->items_, SchedulerItem::cmp);
   }
   this->to_add_.clear();
   this->to_add_count_clear_locked_();
@@ -781,7 +781,7 @@ bool HOT Scheduler::cleanup_slow_path_() {
   return !this->items_.empty();
 }
 Scheduler::SchedulerItem *HOT Scheduler::pop_raw_locked_() {
-  std::pop_heap(this->items_.begin(), this->items_.end(), SchedulerItem::cmp);
+  std::ranges::pop_heap(this->items_, SchedulerItem::cmp);
 
   SchedulerItem *item = this->items_.back();
   this->items_.pop_back();

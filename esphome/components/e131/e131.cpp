@@ -87,7 +87,7 @@ void E131Component::loop() {
 }
 
 void E131Component::add_effect(E131AddressableLightEffect *light_effect) {
-  if (std::find(light_effects_.begin(), light_effects_.end(), light_effect) != light_effects_.end()) {
+  if (std::ranges::find(light_effects_, light_effect) != light_effects_.end()) {
     return;
   }
 
@@ -103,7 +103,7 @@ void E131Component::add_effect(E131AddressableLightEffect *light_effect) {
 }
 
 void E131Component::remove_effect(E131AddressableLightEffect *light_effect) {
-  auto it = std::find(light_effects_.begin(), light_effects_.end(), light_effect);
+  auto it = std::ranges::find(light_effects_, light_effect);
   if (it == light_effects_.end()) {
     return;
   }

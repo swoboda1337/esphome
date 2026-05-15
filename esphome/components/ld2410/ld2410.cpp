@@ -659,7 +659,7 @@ void LD2410Component::set_bluetooth_password(const std::string &password) {
   }
   this->set_config_mode_(true);
   uint8_t cmd_value[6];
-  std::copy(password.begin(), password.end(), std::begin(cmd_value));
+  std::ranges::copy(password, std::begin(cmd_value));
   this->send_command_(CMD_BT_PASSWORD, cmd_value, sizeof(cmd_value));
   this->set_config_mode_(false);
 }

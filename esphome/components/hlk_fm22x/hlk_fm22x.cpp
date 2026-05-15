@@ -39,7 +39,7 @@ void HlkFm22xComponent::enroll_face(const std::string &name, HlkFm22xFaceDirecti
   ESP_LOGI(TAG, "Starting enrollment for %s", name.c_str());
   std::array<uint8_t, 35> data{};
   data[0] = 0;  // admin
-  std::copy(name.begin(), name.end(), data.begin() + 1);
+  std::ranges::copy(name, data.begin() + 1);
   // Remaining bytes are already zero-initialized
   data[33] = (uint8_t) direction;
   data[34] = 10;  // timeout

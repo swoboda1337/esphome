@@ -232,7 +232,7 @@ void MAX7219Component::scroll(bool on_off) { this->set_scroll(on_off); }
 void MAX7219Component::scroll_left() {
   for (int chip_line = 0; chip_line < this->num_chip_lines_; chip_line++) {
     auto scroll = [&](std::vector<uint8_t> &line, uint16_t steps) {
-      std::rotate(line.begin(), std::next(line.begin(), steps), line.end());
+      std::ranges::rotate(line, std::next(line.begin(), steps));
     };
     if (this->update_) {
       this->max_displaybuffer_[chip_line].push_back(this->bckgrnd_);

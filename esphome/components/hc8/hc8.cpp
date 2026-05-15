@@ -77,7 +77,7 @@ void HC8Component::calibrate(uint16_t baseline) {
   ESP_LOGD(TAG, "HC8 Calibrating baseline to %uppm", baseline);
 
   std::array<uint8_t, 6> command{};
-  std::copy(begin(HC8_COMMAND_CALIBRATE_PREAMBLE), end(HC8_COMMAND_CALIBRATE_PREAMBLE), begin(command));
+  std::ranges::copy(HC8_COMMAND_CALIBRATE_PREAMBLE, begin(command));
   command[3] = baseline >> 8;
   command[4] = baseline;
   command[5] = 0;

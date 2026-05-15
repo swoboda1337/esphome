@@ -36,7 +36,7 @@ std::string str_lower_case(const std::string &str) { return str_ctype_transform<
 std::string str_upper_case(const std::string &str) {
   std::string result;
   result.resize(str.length());
-  std::transform(str.begin(), str.end(), result.begin(), [](unsigned char ch) { return std::toupper(ch); });
+  std::ranges::transform(str, result.begin(), [](unsigned char ch) { return std::toupper(ch); });
   return result;
 }
 

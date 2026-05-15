@@ -171,7 +171,7 @@ void BTHomeMiThermometer::set_bindkey(std::initializer_list<uint8_t> bindkey) {
     ESP_LOGW(TAG, "BTHome bindkey size mismatch: %zu", bindkey.size());
     return;
   }
-  std::copy(bindkey.begin(), bindkey.end(), this->bindkey_);
+  std::ranges::copy(bindkey, this->bindkey_);
   this->has_bindkey_ = true;
 }
 

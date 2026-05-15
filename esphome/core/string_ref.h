@@ -179,7 +179,7 @@ inline bool operator!=(const __FlashStringHelper *lhs, const StringRef &rhs) { r
 #endif  // USE_ESP8266
 
 inline bool operator<(const StringRef &lhs, const StringRef &rhs) {
-  return std::lexicographical_compare(std::begin(lhs), std::end(lhs), std::begin(rhs), std::end(rhs));
+  return std::ranges::lexicographical_compare(lhs, rhs);
 }
 
 inline std::string &operator+=(std::string &lhs, const StringRef &rhs) {

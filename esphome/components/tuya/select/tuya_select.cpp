@@ -10,12 +10,12 @@ void TuyaSelect::setup() {
     uint8_t enum_value = datapoint.value_enum;
     ESP_LOGV(TAG, "MCU reported select %u value %u", this->select_id_, enum_value);
     auto mappings = this->mappings_;
-    auto it = std::find(mappings.cbegin(), mappings.cend(), enum_value);
+    auto it = std::ranges::find(mappings, enum_value);
     if (it == mappings.end()) {
       ESP_LOGW(TAG, "Invalid value %u", enum_value);
       return;
     }
-    size_t mapping_idx = std::distance(mappings.cbegin(), it);
+    size_t mapping_idx = std::distance(mappings.begin(), it);
     this->publish_state(mapping_idx);
   });
 }

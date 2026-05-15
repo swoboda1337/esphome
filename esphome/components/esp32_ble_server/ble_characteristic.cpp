@@ -90,10 +90,7 @@ void BLECharacteristic::add_descriptor(BLEDescriptor *descriptor) {
   this->descriptors_.push_back(descriptor);
 }
 
-void BLECharacteristic::remove_descriptor(BLEDescriptor *descriptor) {
-  this->descriptors_.erase(std::remove(this->descriptors_.begin(), this->descriptors_.end(), descriptor),
-                           this->descriptors_.end());
-}
+void BLECharacteristic::remove_descriptor(BLEDescriptor *descriptor) { std::erase(this->descriptors_, descriptor); }
 
 void BLECharacteristic::do_create(BLEService *service) {
   this->service_ = service;

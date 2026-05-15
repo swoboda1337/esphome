@@ -67,7 +67,7 @@ bool ThermoProBLE::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
     // reconstruct whole record from 2 byte uuid and data
     esp_bt_uuid_t uuid = service_data.uuid.get_uuid();
     uint8_t data[MAX_DATA_SIZE] = {static_cast<uint8_t>(uuid.uuid.uuid16), static_cast<uint8_t>(uuid.uuid.uuid16 >> 8)};
-    std::copy(service_data.data.begin(), service_data.data.end(), std::begin(data) + 2);
+    std::ranges::copy(service_data.data, std::begin(data) + 2);
 
     // dispatch data to parser
     optional<ParseResult> result = this->device_parser_(data, data_size);

@@ -164,16 +164,15 @@ void OpenthermHub::on_shutdown() { this->opentherm_->stop(); }
 // Disabling clang-tidy for this particular line since it keeps removing the trailing underscore (bug?)
 void OpenthermHub::write_initial_messages_(std::vector<MessageId> &target) {  // NOLINT
   std::vector<std::pair<MessageId, uint8_t>> sorted;
-  std::copy_if(this->configured_messages_.begin(), this->configured_messages_.end(), std::back_inserter(sorted),
-               [](const std::pair<MessageId, uint8_t> &pair) { return pair.second < REPEATING_MESSAGE_ORDER; });
-  std::sort(sorted.begin(), sorted.end(),
-            [](const std::pair<MessageId, uint8_t> &a, const std::pair<MessageId, uint8_t> &b) {
-              return a.second < b.second;
-            });
+  std::ranges::copy_if(this->configured_messages_, std::back_inserter(sorted),
+                       [](const std::pair<MessageId, uint8_t> &pair) { return pair.second < REPEATING_MESSAGE_ORDER; });
+  std::ranges::sort(sorted, [](const std::pair<MessageId, uint8_t> &a, const std::pair<MessageId, uint8_t> &b) {
+    return a.second < b.second;
+  });
 
   target.clear();
-  std::transform(sorted.begin(), sorted.end(), std::back_inserter(target),
-                 [](const std::pair<MessageId, uint8_t> &pair) { return pair.first; });
+  std::ranges::transform(sorted, std::back_inserter(target),
+                         [](const std::pair<MessageId, uint8_t> &pair) { return pair.first; });
 }
 
 // Disabling clang-tidy for this particular line since it keeps removing the trailing underscore (bug?)

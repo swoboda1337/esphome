@@ -38,10 +38,7 @@ BLEAdvertising::BLEAdvertising(uint32_t advertising_cycle_time) : advertising_cy
 }
 
 void BLEAdvertising::add_service_uuid(ESPBTUUID uuid) { this->advertising_uuids_.push_back(uuid); }
-void BLEAdvertising::remove_service_uuid(ESPBTUUID uuid) {
-  this->advertising_uuids_.erase(std::remove(this->advertising_uuids_.begin(), this->advertising_uuids_.end(), uuid),
-                                 this->advertising_uuids_.end());
-}
+void BLEAdvertising::remove_service_uuid(ESPBTUUID uuid) { std::erase(this->advertising_uuids_, uuid); }
 
 void BLEAdvertising::set_service_data(std::span<const uint8_t> data) {
   delete[] this->advertising_data_.p_service_data;
