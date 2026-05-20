@@ -251,13 +251,39 @@ CONF_CONNECTION_TIMEOUT = "connection_timeout"
 CONF_MAX_NOTIFICATIONS = "max_notifications"
 
 # BLE connection limits
-# ESP-IDF CONFIG_BT_ACL_CONNECTIONS has range 1-9, default 4
-# Total instances: 10 (ADV + SCAN + connections)
-# - ADV only: up to 9 connections
-# - SCAN only: up to 9 connections
-# - ADV + SCAN: up to 8 connections
+# ESP-IDF CONFIG_BT_ACL_CONNECTIONS counts the total Bluedroid host stack
+# instances (ADV/SCAN + connections). The Kconfig range is chip-specific —
+# see components/bt/host/bluedroid/Kconfig.in:1276. We reserve 1 instance
+# for ADV/SCAN, so each variant's max user-facing connection count is the
+# chip's BT_ACL_CONNECTIONS upper bound minus 1.
 DEFAULT_MAX_CONNECTIONS = 3
-IDF_MAX_CONNECTIONS = 9
+_BT_ACL_MAX_BY_VARIANT = {
+    const.VARIANT_ESP32C2: 2,
+    const.VARIANT_ESP32: 9,
+    const.VARIANT_ESP32C3: 9,
+    const.VARIANT_ESP32S3: 9,
+    const.VARIANT_ESP32H2: 15,
+}
+# Used by tests and other components as an upper bound for slot reservation;
+# the real per-build limit narrows further via _chip_max_connections().
+IDF_MAX_CONNECTIONS = 50
+
+
+def _chip_max_connections() -> int:
+    """Max user-visible connections for the current chip variant.
+
+    One instance is reserved for ADV/SCAN, so we subtract 1 from the chip's
+    BT_ACL_CONNECTIONS upper bound. Unknown variants fall through to a
+    permissive ceiling matching the Bluedroid default range.
+    """
+    bt_acl_max = _BT_ACL_MAX_BY_VARIANT.get(get_esp32_variant(), 50)
+    return max(1, bt_acl_max - 1)
+
+
+def _validate_max_connections(value):
+    chip_max = _chip_max_connections()
+    return cv.All(cv.positive_int, cv.Range(min=1, max=chip_max))(value)
+
 
 # Connection slot tracking keys
 KEY_ESP32_BLE = "esp32_ble"
@@ -340,9 +366,10 @@ CONFIG_SCHEMA = cv.Schema(
             cv.positive_int,
             cv.Range(min=1, max=64),
         ),
-        cv.Optional(CONF_MAX_CONNECTIONS, default=DEFAULT_MAX_CONNECTIONS): cv.All(
-            cv.positive_int, cv.Range(min=1, max=IDF_MAX_CONNECTIONS)
-        ),
+        cv.Optional(
+            CONF_MAX_CONNECTIONS,
+            default=lambda: min(DEFAULT_MAX_CONNECTIONS, _chip_max_connections()),
+        ): _validate_max_connections,
         cv.Optional(CONF_USE_PSRAM): cv.All(
             cv.only_on_esp32, cv.requires_component("psram"), cv.boolean
         ),
@@ -524,10 +551,10 @@ def final_validation(config):
         if "max_connections" in tracker_config and CONF_MAX_CONNECTIONS not in config:
             max_connections = tracker_config["max_connections"]
 
-    # Set CONFIG_BT_ACL_CONNECTIONS to the maximum connections needed + 1 for ADV/SCAN
-    # This is the Bluedroid host stack total instance limit (range 1-9, default 4)
-    # Total instances = ADV/SCAN (1) + connection slots (max_connections)
-    # Shared between client (tracker/ble_client) and server
+    # Set CONFIG_BT_ACL_CONNECTIONS to max_connections + 1 (one slot reserved
+    # for ADV/SCAN). The schema validator caps max_connections to the chip's
+    # _chip_max_connections(), so max_connections + 1 always fits in the
+    # chip's Kconfig range — no clamp needed here.
     add_idf_sdkconfig_option("CONFIG_BT_ACL_CONNECTIONS", max_connections + 1)
 
     # Set controller-specific max connections for ESP32 (classic)
