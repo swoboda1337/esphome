@@ -4,5 +4,5 @@ packages:
 <<: !include common.yaml
 
 esp32_ble_tracker:
-  max_connections: 9
+  max_connections: 8
   software_coexistence: false

@@ -280,11 +280,6 @@ def _chip_max_connections() -> int:
     return max(1, bt_acl_max - 1)
 
 
-def _validate_max_connections(value):
-    chip_max = _chip_max_connections()
-    return cv.All(cv.positive_int, cv.Range(min=1, max=chip_max))(value)
-
-
 # Connection slot tracking keys
 KEY_ESP32_BLE = "esp32_ble"
 KEY_USED_CONNECTION_SLOTS = "used_connection_slots"
@@ -369,7 +364,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(
             CONF_MAX_CONNECTIONS,
             default=lambda: min(DEFAULT_MAX_CONNECTIONS, _chip_max_connections()),
-        ): _validate_max_connections,
+        ): cv.All(cv.positive_int, cv.Range(min=1, max=IDF_MAX_CONNECTIONS)),
         cv.Optional(CONF_USE_PSRAM): cv.All(
             cv.only_on_esp32, cv.requires_component("psram"), cv.boolean
         ),
@@ -551,10 +546,22 @@ def final_validation(config):
         if "max_connections" in tracker_config and CONF_MAX_CONNECTIONS not in config:
             max_connections = tracker_config["max_connections"]
 
+    # Enforce the chip-specific upper bound here (not at the schema level) so
+    # we also catch the value coming in via the deprecated
+    # esp32_ble_tracker.max_connections path. Chip's BT_ACL_CONNECTIONS
+    # upper bound is the total instance count (connections + 1 ADV/SCAN
+    # slot), so the user-visible cap is _chip_max_connections().
+    chip_max = _chip_max_connections()
+    if max_connections > chip_max:
+        raise cv.Invalid(
+            f"max_connections={max_connections} exceeds the BT_ACL_CONNECTIONS "
+            f"limit for this chip variant (max {chip_max}). "
+            "Reduce max_connections in the esp32_ble component."
+        )
+
     # Set CONFIG_BT_ACL_CONNECTIONS to max_connections + 1 (one slot reserved
-    # for ADV/SCAN). The schema validator caps max_connections to the chip's
-    # _chip_max_connections(), so max_connections + 1 always fits in the
-    # chip's Kconfig range — no clamp needed here.
+    # for ADV/SCAN). Guaranteed to fit in the chip's Kconfig range by the
+    # chip_max check above.
     add_idf_sdkconfig_option("CONFIG_BT_ACL_CONNECTIONS", max_connections + 1)
 
     # Set controller-specific max connections for ESP32 (classic)
