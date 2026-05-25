@@ -41,7 +41,16 @@ async def new_fastled_light(config):
     if CONF_MAX_REFRESH_RATE in config:
         cg.add(var.set_max_refresh_rate(config[CONF_MAX_REFRESH_RATE]))
 
-    cg.add_library("fastled/FastLED", "3.9.16")
+    # Pinned to a master SHA past the IDF 6 guards (i2s_esp32dev moved out
+    # of the compiled-source list and feature_flags/enabled.h now disables
+    # the I2S driver on IDF >= 6 where PERIPH_I2S1_MODULE was removed; LCD
+    # I80 driver files marked .disabled). The last tagged release (3.10.3,
+    # 2025-09-20) predates those fixes.
+    cg.add_library(
+        "FastLED",
+        None,
+        "https://github.com/FastLED/FastLED.git#f7d4b0e51c6d2636942d8816d67a2270ab6c71ba",
+    )
     if CORE.is_esp32:
         from esphome.components.esp32 import include_builtin_idf_component
 
