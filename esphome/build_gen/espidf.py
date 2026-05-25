@@ -204,18 +204,15 @@ idf_component_register(
 # Apply C++ standard
 target_compile_features(${{COMPONENT_LIB}} PUBLIC cxx_std_20)
 
-# Precompile the actually-shared core headers (helpers.h drags in the
-# heavy STL: <algorithm>/<array>/<functional>/<memory>/<span>/<string>/
-# <type_traits>/<vector>/<mutex> plus FreeRTOS; log.h adds the IDF log
-# infra; hal.h adds the platform HAL). The full esphome.h umbrella is
-# too wide -- only main.cpp includes it directly, and force-prepending
-# every component header to every TU bloats the PCH without payoff.
-# Generator expression scopes the PCH to C++ TUs only -- these headers
-# pull in <array>/<span> etc. which the C compiler can't process.
+# Precompile the two umbrella core headers that every component .cpp
+# transitively pulls in via its own component header chain. component.h
+# already includes helpers.h/log.h/hal.h/defines.h + <functional>/
+# <string>/<cmath>/<cstdint>; application.h adds the loop/scheduler/
+# entity registration surface 20+ component files use directly. CXX-only
+# generator expression -- C TUs can't parse <string>/<functional>.
 target_precompile_headers(${{COMPONENT_LIB}} PRIVATE
-    "$<$<COMPILE_LANGUAGE:CXX>:esphome/core/helpers.h>"
-    "$<$<COMPILE_LANGUAGE:CXX>:esphome/core/log.h>"
-    "$<$<COMPILE_LANGUAGE:CXX>:esphome/core/hal.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:esphome/core/component.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:esphome/core/application.h>"
 )
 
 # ESPHome linker options
