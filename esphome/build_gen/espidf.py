@@ -205,9 +205,13 @@ idf_component_register(
 target_compile_features(${{COMPONENT_LIB}} PUBLIC cxx_std_20)
 
 # Precompile the esphome.h umbrella header once for the whole src target
-# (every component .cpp gets it implicitly prepended). Cuts the per-TU
+# (every C++ .cpp gets it implicitly prepended). Cuts the per-TU
 # preprocessing dominated by repeated <string>/<vector>/<functional>/etc.
-target_precompile_headers(${{COMPONENT_LIB}} PRIVATE "esphome.h")
+# Generator expression guards the PCH to CXX only -- esphome.h pulls in
+# C++ STL headers (<array>, <span>, ...) that fail when compiled as C.
+target_precompile_headers(${{COMPONENT_LIB}} PRIVATE
+    "$<$<COMPILE_LANGUAGE:CXX>:esphome.h>"
+)
 
 # ESPHome linker options
 target_link_options(${{COMPONENT_LIB}} PUBLIC
