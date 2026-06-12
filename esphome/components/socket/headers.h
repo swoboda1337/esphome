@@ -170,6 +170,18 @@ using socklen_t = uint32_t;
 #include <netinet/tcp.h>
 #endif  // USE_HOST
 
+#ifdef USE_ZEPHYR
+// Provides inet_ntop()/inet_pton() as zsock_* wrappers.
+#include <arpa/inet.h>
+// Zephyr has no inet_addr(); emulate it with inet_pton().
+static inline uint32_t inet_addr(const char *cp) {
+  struct in_addr addr {};
+  if (inet_pton(AF_INET, cp, &addr) != 1)
+    return 0xFFFFFFFFUL;  // INADDR_NONE
+  return addr.s_addr;
+}
+#endif  // USE_ZEPHYR
+
 #ifdef USE_ARDUINO
 // arduino-esp32 declares a global var called INADDR_NONE which is replaced
 // by the define
