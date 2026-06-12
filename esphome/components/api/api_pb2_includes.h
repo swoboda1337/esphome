@@ -31,9 +31,12 @@
 #include <vector>
 #include <string>
 
+// Zephyr's logging headers define LOG_LEVEL_NONE as a numeric macro, which
+// breaks the generated enums::LOG_LEVEL_NONE enumerator in api_pb2.h and its
+// use sites in the API translation units. No API code uses the Zephyr macro,
+// so drop it for the remainder of the translation unit. (push/pop is not an
+// option: the enumerator is referenced well beyond this header.)
 #ifdef LOG_LEVEL_NONE
-#define ESPHOME_SAVED_LOG_LEVEL_NONE
-#pragma push_macro("LOG_LEVEL_NONE")
 #undef LOG_LEVEL_NONE
 #endif
 
@@ -42,8 +45,3 @@ namespace esphome::api {
 // This file only provides includes, no actual code
 
 }  // namespace esphome::api
-
-#ifdef ESPHOME_SAVED_LOG_LEVEL_NONE
-#pragma pop_macro("LOG_LEVEL_NONE")
-#undef ESPHOME_SAVED_LOG_LEVEL_NONE
-#endif
