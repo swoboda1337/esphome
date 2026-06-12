@@ -222,6 +222,10 @@ async def to_code(config):
         zephyr_add_prj_conf("NET_IPV4", True)
         zephyr_add_prj_conf("NET_TCP", True)
         zephyr_add_prj_conf("NET_UDP", True)
+        # RFC 6528 ISN generation needs mbedtls_md5, which Nordic's
+        # nrf_security mbedTLS build does not provide; fall back to
+        # Zephyr's random ISN.
+        zephyr_add_prj_conf("NET_TCP_ISN_RFC6528", False)
 
     if (enable_ipv6 := config.get(CONF_ENABLE_IPV6, None)) is not None:
         cg.add_define("USE_NETWORK_IPV6", enable_ipv6)
