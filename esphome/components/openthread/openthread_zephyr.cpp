@@ -12,6 +12,9 @@ static const char *const TAG = "openthread";
 namespace esphome::openthread {
 
 static void on_thread_state_changed(otChangedFlags flags, struct openthread_context *ot_context, void *user_data) {
+  // Keep connected_ in sync so network::is_connected() reflects the Thread
+  // attachment state (the API server drops clients while it reads false).
+  OpenThreadComponent::on_state_changed(flags, global_openthread_component);
   if (flags & OT_CHANGED_THREAD_ROLE) {
     otDeviceRole role = otThreadGetDeviceRole(ot_context->instance);
     ESP_LOGI(TAG, "Thread role changed to %s", otThreadDeviceRoleToString(role));
@@ -61,6 +64,8 @@ void OpenThreadComponent::setup() {
 }
 
 void OpenThreadComponent::ot_main() {}
+
+otInstance *OpenThreadComponent::get_openthread_instance_() { return openthread_get_default_instance(); }
 
 network::IPAddresses OpenThreadComponent::get_ip_addresses() {
   network::IPAddresses addresses;

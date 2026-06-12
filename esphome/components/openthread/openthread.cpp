@@ -244,7 +244,14 @@ bool OpenThreadComponent::teardown() {
     otSrpClientClearHostAndServices(instance);
     otSrpClientBuffersFreeAllServices(instance);
     global_openthread_component = nullptr;
-#if defined(USE_ESP32) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0)
+// ESP_IDF_VERSION_VAL is undefined outside ESP32 builds and the preprocessor
+// does not short-circuit &&, so the version check must be nested.
+#ifdef USE_ESP32
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0)
+#define ESPHOME_OPENTHREAD_STOP_MAIN_LOOP
+#endif
+#endif
+#ifdef ESPHOME_OPENTHREAD_STOP_MAIN_LOOP
     ESP_LOGD(TAG, "Exit main loop ");
     int error = this->openthread_stop_();
     if (error != ESP_OK) {
