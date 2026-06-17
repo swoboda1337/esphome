@@ -70,11 +70,8 @@ class RemoteReceiveData {
   bool peek_item(uint32_t mark, uint32_t space, uint32_t offset = 0) const {
     return this->peek_space(space, offset + 1) && this->peek_mark(mark, offset);
   }
-  // Skip up to max_skip leading items looking for a (mark, space) header. This lets decoders
-  // tolerate noise that precedes the real frame in the receive buffer. On success the index is
-  // advanced to the matching mark and true is returned; otherwise the index is left unchanged.
-  bool find_item(uint32_t mark, uint32_t space, uint32_t max_skip = 8) {
-    for (uint32_t skip = 0; skip <= max_skip; skip++) {
+  bool find_item(uint32_t mark, uint32_t space) {
+    for (uint32_t skip = 0; this->is_valid(skip + 1); skip++) {
       if (this->peek_item(mark, space, skip)) {
         this->advance(skip);
         return true;
