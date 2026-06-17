@@ -56,8 +56,8 @@ void CoolixProtocol::encode(RemoteTransmitData *dst, const CoolixData &data) {
 }
 
 static bool decode_frame(RemoteReceiveData &src, uint32_t &dst) {
-  // Checking for header
-  if (!src.expect_item(HEADER_MARK_US, HEADER_SPACE_US))
+  // Checking for header, skipping any noise that precedes it
+  if (!src.find_item(HEADER_MARK_US, HEADER_SPACE_US))
     return false;
   // Reading data
   uint32_t data = 0;
@@ -90,12 +90,10 @@ static bool decode_frame(RemoteReceiveData &src, uint32_t &dst) {
 
 optional<CoolixData> CoolixProtocol::decode(RemoteReceiveData data) {
   CoolixData result;
-  // A single frame is 100 items, a repeated frame 200; require at least one frame's worth. Any extra
-  // items are treated as noise and the header search aligns on the frame, rather than rejecting on an
-  // exact size match (which loses frames that have leading or trailing noise in the buffer).
+  // A single frame is 100 items, a repeated frame 200; require at least one frame's worth. Extra items
+  // are treated as noise that decode_frame skips, rather than rejecting on an exact size match.
   if (data.size() < 100)
     return {};
-  data.find_item(HEADER_MARK_US, HEADER_SPACE_US);
   if (!decode_frame(data, result.first))
     return {};
   // Optionally decode the repeated second frame; absent (single frame) or trailing noise leaves it unset.

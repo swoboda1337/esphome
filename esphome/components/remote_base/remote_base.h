@@ -73,7 +73,7 @@ class RemoteReceiveData {
   bool find_item(uint32_t mark, uint32_t space) {
     for (uint32_t skip = 0; this->is_valid(skip + 1); skip++) {
       if (this->peek_item(mark, space, skip)) {
-        this->advance(skip);
+        this->advance(skip + 2);
         return true;
       }
     }

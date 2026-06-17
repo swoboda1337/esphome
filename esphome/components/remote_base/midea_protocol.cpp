@@ -62,9 +62,7 @@ static bool decode_data(RemoteReceiveData &src, MideaData &dst) {
 
 optional<MideaData> MideaProtocol::decode(RemoteReceiveData src) {
   MideaData out, inv;
-  // Skip any noise preceding the frame so a valid frame is not lost to leading garbage in the buffer.
-  src.find_item(HEADER_MARK_US, HEADER_SPACE_US);
-  if (src.expect_item(HEADER_MARK_US, HEADER_SPACE_US) && decode_data(src, out) && out.is_valid() &&
+  if (src.find_item(HEADER_MARK_US, HEADER_SPACE_US) && decode_data(src, out) && out.is_valid() &&
       src.expect_item(FOOTER_MARK_US, FOOTER_SPACE_US) && src.expect_item(HEADER_MARK_US, HEADER_SPACE_US) &&
       decode_data(src, inv) && src.expect_mark(FOOTER_MARK_US) && out.is_compliment(inv))
     return out;
