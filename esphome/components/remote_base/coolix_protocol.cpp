@@ -92,7 +92,6 @@ optional<CoolixData> CoolixProtocol::decode(RemoteReceiveData data) {
   CoolixData result;
   if (!decode_frame(data, result.first))
     return {};
-  // Optionally decode the repeated second frame; absent (single frame) or trailing noise leaves it unset.
   if (!data.expect_space(FOOTER_SPACE_US) || !decode_frame(data, result.second))
     result.second = 0;
   return result;
