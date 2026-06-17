@@ -90,10 +90,6 @@ static bool decode_frame(RemoteReceiveData &src, uint32_t &dst) {
 
 optional<CoolixData> CoolixProtocol::decode(RemoteReceiveData data) {
   CoolixData result;
-  // A single frame is 100 items, a repeated frame 200; require at least one frame's worth. Extra items
-  // are treated as noise that decode_frame skips, rather than rejecting on an exact size match.
-  if (data.size() < 100)
-    return {};
   if (!decode_frame(data, result.first))
     return {};
   // Optionally decode the repeated second frame; absent (single frame) or trailing noise leaves it unset.
