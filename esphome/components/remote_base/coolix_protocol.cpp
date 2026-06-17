@@ -90,10 +90,16 @@ static bool decode_frame(RemoteReceiveData &src, uint32_t &dst) {
 
 optional<CoolixData> CoolixProtocol::decode(RemoteReceiveData data) {
   CoolixData result;
-  const auto size = data.size();
-  if ((size != 200 && size != 100) || !decode_frame(data, result.first))
+  // A single frame is 100 items, a repeated frame 200; require at least one frame's worth. Any extra
+  // items are treated as noise and the header search aligns on the frame, rather than rejecting on an
+  // exact size match (which loses frames that have leading or trailing noise in the buffer).
+  if (data.size() < 100)
     return {};
-  if (size == 100 || !data.expect_space(FOOTER_SPACE_US) || !decode_frame(data, result.second))
+  data.find_item(HEADER_MARK_US, HEADER_SPACE_US);
+  if (!decode_frame(data, result.first))
+    return {};
+  // Optionally decode the repeated second frame; absent (single frame) or trailing noise leaves it unset.
+  if (!data.expect_space(FOOTER_SPACE_US) || !decode_frame(data, result.second))
     result.second = 0;
   return result;
 }
