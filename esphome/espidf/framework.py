@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import platform
 import re
-import shutil
 import tempfile
 
 from esphome.config_validation import Version
@@ -88,6 +87,35 @@ def _get_idf_tools_path() -> Path:
     # doesn't leave ``..`` segments in the IDF_TOOLS_PATH handed to idf.py, which
     # otherwise warns that the venv interpreter path doesn't match the install.
     return path.resolve()
+
+
+def _core_path() -> str:
+    """Minimal, trusted PATH for running idf_tools.
+
+    idf_tools probes the PATH for each tool, so a broken or conflicting tool in a
+    user-added PATH dir (e.g. a Homebrew ``openocd`` left dangling after a capstone
+    upgrade) would be executed and could fail the install/check. Restricting to core
+    system dirs -- plus the managed tools installed under ``IDF_TOOLS_PATH`` -- means
+    only trusted tools are resolved.
+    """
+    if os.name == "nt":
+        # os.defpath on Windows is ".;C:\\bin" (CWD + a usually-missing dir), so build the
+        # trusted base from the actual system root instead.
+        system_root = Path(
+            os.environ.get("SYSTEMROOT") or os.environ.get("WINDIR") or r"C:\Windows"
+        )
+        system32 = system_root / "System32"
+        return os.pathsep.join(
+            str(p)
+            for p in (
+                system32,
+                system_root,
+                system32 / "Wbem",
+                system32 / "WindowsPowerShell" / "v1.0",
+            )
+        )
+    # POSIX: os.defpath is ":/bin:/usr/bin"; strip the leading empty entry (= CWD).
+    return os.defpath.lstrip(os.pathsep)
 
 
 # Windows' default MAX_PATH is 260 characters. ESP-IDF toolchains nest deeply
@@ -784,18 +812,20 @@ def check_esp_idf_install(
     env = {}
     env["IDF_TOOLS_PATH"] = str(_get_idf_tools_path())
     env["IDF_PATH"] = ""
+    # Run idf_tools with a minimal trusted PATH instead of the user's full PATH, so a
+    # broken/conflicting tool in a user PATH dir can't be probed and fail the install/check.
+    env["PATH"] = _core_path()
 
     targets = targets or ESPHOME_IDF_DEFAULT_TARGETS
 
-    # Determine which tools need to be installed if not provided
+    # Always install our own cmake/ninja (plus the required toolchain tools) under
+    # IDF_TOOLS_PATH rather than reusing whatever is on the system PATH. Combined with the
+    # trusted PATH above and the managed-tool dirs the build prepends, the build depends
+    # only on managed tools, so a broken or missing system cmake/ninja can't break it.
     if tools is None:
-        tools = []
-        for tool in set(ESPHOME_IDF_DEFAULT_TOOLS) | set(
-            ESPHOME_IDF_DEFAULT_TOOLS_FORCE
-        ):
-            # Check if the tool exist
-            if tool in ESPHOME_IDF_DEFAULT_TOOLS_FORCE or not shutil.which(tool):
-                tools.append(tool)
+        tools = sorted(
+            set(ESPHOME_IDF_DEFAULT_TOOLS) | set(ESPHOME_IDF_DEFAULT_TOOLS_FORCE)
+        )
 
     # 1) Framework
     framework_path, installed = _check_esphome_idf_framework_install(
