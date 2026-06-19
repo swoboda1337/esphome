@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import platform
 import re
-import shutil
 import tempfile
 
 from esphome.config_validation import Version
@@ -784,18 +783,23 @@ def check_esp_idf_install(
     env = {}
     env["IDF_TOOLS_PATH"] = str(_get_idf_tools_path())
     env["IDF_PATH"] = ""
+    # PROTOTYPE (hermetic): run idf_tools with a minimal core PATH instead of the user's
+    # full PATH. idf_tools probes the PATH for each tool, so a broken/conflicting tool in a
+    # user PATH dir (e.g. a Homebrew openocd left dangling after a capstone upgrade) would
+    # otherwise be executed and fail the check/install. Restricting to core system dirs means
+    # only our managed tools (installed below) are resolved.
+    env["PATH"] = os.defpath.lstrip(os.pathsep)
 
     targets = targets or ESPHOME_IDF_DEFAULT_TARGETS
 
     # Determine which tools need to be installed if not provided
     if tools is None:
-        tools = []
-        for tool in set(ESPHOME_IDF_DEFAULT_TOOLS) | set(
-            ESPHOME_IDF_DEFAULT_TOOLS_FORCE
-        ):
-            # Check if the tool exist
-            if tool in ESPHOME_IDF_DEFAULT_TOOLS_FORCE or not shutil.which(tool):
-                tools.append(tool)
+        # PROTOTYPE (hermetic): always install our own cmake/ninja under IDF_TOOLS_PATH
+        # instead of reusing whatever happens to be on the system PATH. With the curated
+        # PATH above, the build depends only on managed tools.
+        tools = sorted(
+            set(ESPHOME_IDF_DEFAULT_TOOLS) | set(ESPHOME_IDF_DEFAULT_TOOLS_FORCE)
+        )
 
     # 1) Framework
     framework_path, installed = _check_esphome_idf_framework_install(
