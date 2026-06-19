@@ -107,6 +107,6 @@ dependencies:
     version: 9.5.0
   fastled/FastLED:
     git: https://github.com/FastLED/FastLED.git
-    version: d44c800a9e876a8394caefc2ce4915dd96dac77b
+    version: adedfc40e73fb80f8e930318781036d8fe1dbd9f
     rules:
       - if: "$ESPHOME_ARDUINO_COMPONENT == 1"

@@ -47,9 +47,13 @@ async def new_fastled_light(config):
         add_idf_component(
             name="fastled/FastLED",
             repo="https://github.com/FastLED/FastLED.git",
-            ref="d44c800a9e876a8394caefc2ce4915dd96dac77b",
+            ref="adedfc40e73fb80f8e930318781036d8fe1dbd9f",  # 3.10.4
         )
         cg.add_library("SPI", None)
+        # WS2812B on the classic ESP32 (no RMT DMA) goes black with FastLED's
+        # default RMT5 "BALANCED" preset (timer-ISR refill). Force the LEGACY
+        # preset (threshold-ISR refill) instead. See #17063.
+        cg.add_build_flag("-DFASTLED_RMT5_PRESET_LEGACY")
     else:
         cg.add_library("fastled/FastLED", "3.9.16")
     await light.register_light(var, config)
