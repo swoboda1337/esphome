@@ -1,14 +1,13 @@
 """Auto-loaded shim for ESP-IDF's component-manager subprocesses.
 
-This directory is prepended to ``PYTHONPATH`` by
-``esphome.espidf.framework.get_framework_env`` for every ``idf.py`` run.
-Python's ``site`` machinery imports a ``sitecustomize`` module found anywhere
-on ``sys.path`` at interpreter startup, so this file runs in ``idf.py`` *and*
-in the ``idf_component_manager`` subprocess that CMake spawns during the
+``esphome.espidf.framework._install_libsodium_shim`` copies this file into the
+ESP-IDF penv's ``site-packages`` as ``sitecustomize.py`` when the penv is
+(re)installed. Python's ``site`` machinery imports a ``sitecustomize`` module
+from ``site-packages`` at interpreter startup, so this file runs in ``idf.py``
+*and* in the ``idf_component_manager`` subprocess that CMake spawns during the
 configure step -- which is exactly where dependency resolution (and the
-collision) happens. Env (and therefore ``PYTHONPATH``) is inherited down the
-idf.py -> cmake -> component-manager process chain, so a single injection
-point covers them all.
+collision) happens. Both run under the penv interpreter, so a single copy
+covers them all.
 
 What it does
 ------------

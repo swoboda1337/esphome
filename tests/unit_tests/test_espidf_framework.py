@@ -24,6 +24,7 @@ from esphome.espidf.framework import (
     _get_idf_version,
     _get_python_env_path,
     _get_python_version,
+    _install_libsodium_shim,
     _parse_git_source,
     _patch_tools_json_for_linux_arm64,
     _windows_long_paths_enabled,
@@ -637,6 +638,33 @@ def test_get_framework_env_without_python_env_uses_os_path(tmp_path: Path) -> No
 
     assert "IDF_PYTHON_ENV_PATH" not in env
     assert env["PATH"]  # taken from os.environ
+
+
+def test_install_libsodium_shim_copies_into_site_packages(tmp_path: Path) -> None:
+    site_packages = tmp_path / "penv" / "site-packages"
+    site_packages.mkdir(parents=True)
+
+    with patch(
+        "esphome.espidf.framework.run_command",
+        return_value=(True, f"{site_packages}\n", ""),
+    ):
+        _install_libsodium_shim(tmp_path / "penv", {"IDF_X": "1"})
+
+    installed = site_packages / "sitecustomize.py"
+    assert installed.is_file()
+    # Matches the source shim verbatim and carries the libsodium-strip logic.
+    assert "espressif/libsodium" in installed.read_text(encoding="utf-8")
+
+
+def test_install_libsodium_shim_skips_when_site_packages_unknown(
+    tmp_path: Path,
+) -> None:
+    # run_command failing must not raise -- the build proceeds unpatched.
+    with patch(
+        "esphome.espidf.framework.run_command",
+        return_value=(False, None, "boom"),
+    ):
+        _install_libsodium_shim(tmp_path / "penv", None)
 
 
 # ---------------------------------------------------------------------------

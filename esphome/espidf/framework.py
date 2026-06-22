@@ -637,6 +637,47 @@ def _check_esphome_idf_framework_install(
     return framework_path, install
 
 
+# Source of the libsodium-strip shim. Copied verbatim into the IDF penv's
+# site-packages as ``sitecustomize.py`` so Python's site machinery auto-loads
+# it in idf.py and every idf_component_manager subprocess CMake spawns.
+_LIBSODIUM_SHIM_SRC = _SCRIPTS_DIR / "icm_patch" / "sitecustomize.py"
+
+
+def _install_libsodium_shim(python_env_path: Path, env: dict[str, str] | None) -> None:
+    """Drop the libsodium-strip sitecustomize shim into the IDF penv.
+
+    The ESP-IDF component manager refuses two managed components that share the
+    ``libsodium`` short name -- ``espressif__libsodium`` (pulled by arduino-esp32
+    but never used) vs ``esphome__libsodium`` (pulled by noise-c). The shim
+    strips the espressif one from the dependency graph. Placing it in the penv's
+    site-packages means it auto-loads in the component-manager subprocess without
+    touching PYTHONPATH. See ``icm_patch/sitecustomize.py``.
+
+    The penv dir is rebuilt from scratch on every (re)install, so writing the
+    shim here -- inside the install branch -- keeps it in sync with the venv.
+    """
+    env_python_path = get_python_env_executable_path(python_env_path, "python")
+    ok, stdout, _ = run_command(
+        [
+            str(env_python_path),
+            "-c",
+            "import sysconfig; print(sysconfig.get_path('purelib'))",
+        ],
+        msg="Locate ESP-IDF penv site-packages",
+        env=env,
+    )
+    if not ok or not stdout:
+        _LOGGER.warning(
+            "Could not locate ESP-IDF penv site-packages; "
+            "libsodium-strip shim not installed"
+        )
+        return
+    write_file_if_changed(
+        Path(stdout.strip()) / "sitecustomize.py",
+        _LIBSODIUM_SHIM_SRC.read_text(encoding="utf-8"),
+    )
+
+
 def _check_esp_idf_python_env_install(
     version: str,
     features: list[str],
@@ -740,6 +781,8 @@ def _check_esp_idf_python_env_install(
                 raise RuntimeError(
                     f"Install ESP-IDF {version} Python dependencies for {feature} failure"
                 )
+
+        _install_libsodium_shim(python_env_path, env)
 
         stamp_info["python_version"] = _get_python_version(
             env_python_path, env=env, throw_exception=True
@@ -848,16 +891,5 @@ def get_framework_env(
     paths_to_export, export_vars = _get_idf_tool_paths(framework_path, env)
     env.update(export_vars)
     env["PATH"] = os.pathsep.join(paths_to_export + path_list)
-
-    # 6. Prepend our patch dir to PYTHONPATH so its sitecustomize.py auto-loads
-    #    in idf.py and every cmake-spawned idf_component_manager subprocess.
-    #    See esphome/espidf/icm_patch/sitecustomize.py.
-    icm_patch_dir = str(Path(__file__).parent / "icm_patch")
-    existing_pythonpath = env.get("PYTHONPATH")
-    env["PYTHONPATH"] = (
-        icm_patch_dir
-        if not existing_pythonpath
-        else icm_patch_dir + os.pathsep + existing_pythonpath
-    )
 
     return env
