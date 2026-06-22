@@ -31,14 +31,11 @@ Prototype caveats
 * Patches a private ``idf_component_tools`` property (``Manifest.raw_requirements``).
   Re-verify on every ESP-IDF / idf-component-manager bump. Developed against
   idf_component_tools 3.0.3 (ESP-IDF 5.5.4).
-* Set ``ESPHOME_IDF_KEEP_ESPRESSIF_LIBSODIUM=1`` to disable the strip (e.g. to
-  reproduce the collision) without unwiring the PYTHONPATH injection.
 * The shim never raises: any failure is logged and the build proceeds
   unpatched (and would then hit the original collision, which is the honest
   signal that the patch stopped applying).
 """
 
-import os
 import sys
 
 # Names that all refer to Espressif's libsodium (default-namespace "libsodium"
@@ -52,7 +49,8 @@ def _is_espressif_libsodium(name: object) -> bool:
 
 
 def _install_patch() -> None:
-    from idf_component_tools.manifest import models
+    # idf_component_tools only exists in the ESP-IDF penv, not esphome's venv.
+    from idf_component_tools.manifest import models  # pylint: disable=import-error
 
     orig_raw_requirements = models.Manifest.raw_requirements.fget
 
@@ -71,8 +69,7 @@ def _install_patch() -> None:
     models.Manifest.raw_requirements = property(raw_requirements)
 
 
-if os.environ.get("ESPHOME_IDF_KEEP_ESPRESSIF_LIBSODIUM") != "1":
-    try:
-        _install_patch()
-    except Exception as exc:  # noqa: BLE001 - never break the build over the shim
-        sys.stderr.write(f"esphome libsodium-strip shim failed to apply: {exc!r}\n")
+try:
+    _install_patch()
+except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+    sys.stderr.write(f"esphome libsodium-strip shim failed to apply: {exc!r}\n")
