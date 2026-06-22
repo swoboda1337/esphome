@@ -20,15 +20,21 @@ static void early_log_printf_(const char *tag, int line, const char *format, va_
 
 void HOT esp_log_printf_(int level, const char *tag, int line, const char *format, ...) {  // NOLINT
 #ifdef USE_LOGGER
-#ifdef ESPHOME_DEBUG
+  // ``global_logger`` is not set until ``Logger::pre_setup()``, but logging can
+  // happen earlier -- e.g. from a static/global constructor in a component.
+  // Guard unconditionally so an early call returns instead of dereferencing a
+  // null pointer (which crashes the boot and, on ESP, triggers an OTA rollback
+  // loop). The branch is perfectly predicted once the logger is up. In debug
+  // builds the early call is additionally surfaced loudly via early_log_printf_.
   if (logger::global_logger == nullptr) {
+#ifdef ESPHOME_DEBUG
     va_list arg;
     va_start(arg, format);
     early_log_printf_(tag, line, format, arg);
     va_end(arg);
+#endif
     return;
   }
-#endif
   va_list arg;
   va_start(arg, format);
   logger::global_logger->log_vprintf_(static_cast<uint8_t>(level), tag, line, format, arg);
@@ -40,6 +46,8 @@ void HOT esp_log_printf_(int level, const char *tag, int line, const char *forma
 void HOT esp_log_printf_(int level, const char *tag, int line, const __FlashStringHelper *format, ...) {
 #ifdef USE_LOGGER
   ESPHOME_DEBUG_ASSERT(logger::global_logger != nullptr);
+  if (logger::global_logger == nullptr)
+    return;
   va_list arg;
   va_start(arg, format);
   logger::global_logger->log_vprintf_(static_cast<uint8_t>(level), tag, line, format, arg);
@@ -50,12 +58,12 @@ void HOT esp_log_printf_(int level, const char *tag, int line, const __FlashStri
 
 void HOT esp_log_vprintf_(int level, const char *tag, int line, const char *format, va_list args) {  // NOLINT
 #ifdef USE_LOGGER
-#ifdef ESPHOME_DEBUG
   if (logger::global_logger == nullptr) {
+#ifdef ESPHOME_DEBUG
     early_log_printf_(tag, line, format, args);
+#endif
     return;
   }
-#endif
   logger::global_logger->log_vprintf_(static_cast<uint8_t>(level), tag, line, format, args);
 #endif
 }
@@ -65,6 +73,8 @@ void HOT esp_log_vprintf_(int level, const char *tag, int line, const char *form
 void HOT esp_log_vprintf_(int level, const char *tag, int line, const __FlashStringHelper *format, va_list args) {
 #ifdef USE_LOGGER
   ESPHOME_DEBUG_ASSERT(logger::global_logger != nullptr);
+  if (logger::global_logger == nullptr)
+    return;
   logger::global_logger->log_vprintf_(static_cast<uint8_t>(level), tag, line, format, args);
 #endif
 }
@@ -73,12 +83,12 @@ void HOT esp_log_vprintf_(int level, const char *tag, int line, const __FlashStr
 #ifdef USE_ESP32
 int HOT esp_idf_log_vprintf_(const char *format, va_list args) {  // NOLINT
 #ifdef USE_LOGGER
-#ifdef ESPHOME_DEBUG
   if (logger::global_logger == nullptr) {
+#ifdef ESPHOME_DEBUG
     early_log_printf_("esp-idf", 0, format, args);
+#endif
     return 0;
   }
-#endif
   logger::global_logger->log_vprintf_(ESPHOME_LOG_LEVEL, "esp-idf", 0, format, args);
 #endif
   return 0;
