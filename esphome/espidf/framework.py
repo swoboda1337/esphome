@@ -849,4 +849,20 @@ def get_framework_env(
     env.update(export_vars)
     env["PATH"] = os.pathsep.join(paths_to_export + path_list)
 
+    # 6. Prepend our idf-component-manager patch dir to PYTHONPATH. It holds a
+    #    sitecustomize.py that Python auto-imports at interpreter startup, so it
+    #    loads in idf.py and in every cmake-spawned idf_component_manager
+    #    subprocess (env, and thus PYTHONPATH, is inherited down the chain).
+    #    The shim strips arduino-esp32's unused espressif/libsodium dependency,
+    #    which otherwise collides with esphome's libsodium fork (pulled by
+    #    noise-c) over the shared "libsodium" short name. See
+    #    esphome/espidf/icm_patch/sitecustomize.py.
+    icm_patch_dir = str(Path(__file__).parent / "icm_patch")
+    existing_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        icm_patch_dir
+        if not existing_pythonpath
+        else icm_patch_dir + os.pathsep + existing_pythonpath
+    )
+
     return env
