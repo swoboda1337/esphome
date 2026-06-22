@@ -38,26 +38,24 @@ Prototype caveats
 
 import sys
 
-# Names that all refer to Espressif's libsodium (default-namespace "libsodium"
-# normalizes to "espressif/libsodium"). esphome's fork is "esphome/libsodium"
-# and is intentionally NOT matched here.
-_DROP_NAMES = frozenset({"espressif/libsodium", "libsodium"})
+# Espressif's libsodium under any spelling (default-namespace "libsodium"
+# normalizes to "espressif/libsodium"). esphome's fork ("esphome/libsodium")
+# is intentionally not matched.
+_ESPRESSIF_LIBSODIUM = frozenset({"espressif/libsodium", "libsodium"})
 
-
-def _is_espressif_libsodium(name: object) -> bool:
-    return (str(name) if name else "").replace("__", "/") in _DROP_NAMES
-
-
-def _install_patch() -> None:
+try:
     # idf_component_tools only exists in the ESP-IDF penv, not esphome's venv.
     from idf_component_tools.manifest import models  # pylint: disable=import-error
 
-    orig_raw_requirements = models.Manifest.raw_requirements.fget
+    _orig_raw_requirements = models.Manifest.raw_requirements.fget
 
-    def raw_requirements(self):
-        reqs = orig_raw_requirements(self)
+    def _raw_requirements(self):
+        reqs = _orig_raw_requirements(self)
         kept = [
-            r for r in reqs if not _is_espressif_libsodium(getattr(r, "name", None))
+            r
+            for r in reqs
+            if str(getattr(r, "name", "") or "").replace("__", "/")
+            not in _ESPRESSIF_LIBSODIUM
         ]
         if len(kept) != len(reqs):
             sys.stderr.write(
@@ -66,10 +64,6 @@ def _install_patch() -> None:
             )
         return kept
 
-    models.Manifest.raw_requirements = property(raw_requirements)
-
-
-try:
-    _install_patch()
+    models.Manifest.raw_requirements = property(_raw_requirements)
 except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
     sys.stderr.write(f"esphome libsodium-strip shim failed to apply: {exc!r}\n")
