@@ -105,6 +105,10 @@ MODELS = DriverChip.get_models()
 DISPLAY_18BIT = "18bit"
 DISPLAY_16BIT = "16bit"
 
+# Opt out of the MADCTL/PIXFMT init-sequence checks for paged displays that legitimately
+# reuse those opcodes as bank-specific registers.
+CONF_IGNORE_INIT_SEQUENCE_CONFLICTS = "ignore_init_sequence_conflicts"
+
 DISPLAY_PIXEL_MODES = {
     DISPLAY_16BIT: (0x55, PixelMode.PIXEL_MODE_16),
     DISPLAY_18BIT: (0x66, PixelMode.PIXEL_MODE_18),
@@ -221,6 +225,9 @@ def model_schema(config):
                 ),
                 cv.Required(CONF_MODEL): cv.one_of(model.name, upper=True),
                 iseqconf: cv.ensure_list(map_sequence),
+                cv.Optional(
+                    CONF_IGNORE_INIT_SEQUENCE_CONFLICTS, default=False
+                ): cv.boolean,
                 cv.Optional(CONF_BUFFER_SIZE): cv.All(
                     cv.percentage, cv.Range(0.12, 1.0)
                 ),
@@ -267,16 +274,25 @@ def customise_schema(config):
     )(config)
     bus_mode = config[CONF_BUS_MODE]
     config = model_schema(config)(config)
-    # Check for invalid combinations of MADCTL config
-    if init_sequence := config.get(CONF_INIT_SEQUENCE):
+    # Check for invalid combinations of MADCTL/PIXFMT config. Paged displays legitimately
+    # reuse these opcodes as bank-specific registers (after a page-select command), where
+    # they are not the standard MADCTL/PIXFMT; such configs can opt out of these checks with
+    # 'ignore_init_sequence_conflicts: true'.
+    if (init_sequence := config.get(CONF_INIT_SEQUENCE)) and not config[
+        CONF_IGNORE_INIT_SEQUENCE_CONFLICTS
+    ]:
         commands = [x[0] for x in init_sequence]
         if MADCTL in commands and CONF_TRANSFORM in config:
             raise cv.Invalid(
-                f"transform is not supported when MADCTL ({MADCTL:#X}) is in the init sequence"
+                f"transform is not supported when MADCTL ({MADCTL:#X}) is in the init sequence. "
+                f"If this display reuses {MADCTL:#X} as a bank register, set "
+                "'ignore_init_sequence_conflicts: true'"
             )
         if PIXFMT in commands:
             raise cv.Invalid(
-                f"PIXFMT ({PIXFMT:#X}) should not be in the init sequence, it will be set automatically"
+                f"PIXFMT ({PIXFMT:#X}) should not be in the init sequence, it will be set "
+                f"automatically. If this display reuses {PIXFMT:#X} as a bank register, set "
+                "'ignore_init_sequence_conflicts: true'"
             )
 
     if bus_mode == TYPE_QUAD and CONF_DC_PIN in config:

@@ -1,0 +1,28 @@
+# Config-only test for issue #17174: a paged display that reuses PIXFMT (0x3A) and
+# MADCTL (0x36) as bank-specific registers (after a page-select command) can opt out of
+# the init-sequence conflict checks, even with a transform set.
+packages:
+  qspi: !include ../../test_build_components/common/qspi/esp32-s3-idf.yaml
+
+display:
+  - platform: mipi_spi
+    model: CUSTOM
+    bus_mode: quad
+    spi_id: quad_spi
+    cs_pin: GPIO12
+    color_order: rgb
+    dimensions:
+      width: 412
+      height: 412
+    ignore_init_sequence_conflicts: true
+    transform:
+      swap_xy: false
+      mirror_x: true
+      mirror_y: true
+    init_sequence:
+      - [0xFF, 0x20, 0x10, 0x18] # select extended page 0x18
+      - [0x3A, 0x01] # bank register, NOT PIXFMT
+      - [0x36, 0x12] # bank register, NOT MADCTL
+      - [0xFF, 0x20, 0x10, 0x00] # back to default page
+      - [0x11, 0x00]
+      - delay 120ms
