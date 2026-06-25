@@ -644,6 +644,13 @@ def _check_esphome_idf_framework_install(
 
         _write_stamp(env_stamp_file, stamp_info)
 
+        # idf_tools.py downloads each tool archive into <IDF_TOOLS_PATH>/dist
+        # before extracting it into tools/. Once extracted the archives are
+        # redundant (a reinstall re-downloads them), so drop the cache instead
+        # of letting it accumulate hundreds of MB per IDF version.
+        dist_dir = _get_idf_tools_path() / "dist"
+        rmdir(dist_dir, msg="Clean up ESP-IDF tool download cache")
+
     return framework_path, install
 
 
