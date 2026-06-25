@@ -74,6 +74,23 @@ def run_platformio_cli(*args, **kwargs) -> str | int:
     return run_external_process(*cmd, **kwargs)
 
 
+def run_platformio_cli_global(*args, **kwargs) -> str | int:
+    """Run a PlatformIO CLI command that is not tied to a specific project.
+
+    Unlike ``run_platformio_cli`` this does not set the per-project build and
+    libdeps directories (which require an initialized ``CORE`` with a config
+    path), so it can be used for global commands such as ``system prune``.
+    """
+    os.environ["PLATFORMIO_FORCE_COLOR"] = "true"
+    # Suppress Python syntax warnings from third-party scripts.
+    os.environ.setdefault("PYTHONWARNINGS", "ignore::SyntaxWarning")
+    python_exe = _strip_win_long_path_prefix(sys.executable)
+    if python_exe != sys.executable:
+        os.environ["PYTHONEXEPATH"] = python_exe
+    cmd = [python_exe, "-m", "esphome.platformio.runner", *args]
+    return run_external_process(*cmd, **kwargs)
+
+
 def run_platformio_cli_run(config, verbose, *args, **kwargs) -> str | int:
     command = ["run", "-d", str(CORE.build_path)]
     if verbose:
