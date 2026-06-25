@@ -1660,14 +1660,10 @@ def command_clean_all(args: ArgsProtocol) -> int | None:
 def command_prune(args: ArgsProtocol) -> int | None:
     from esphome.platformio.toolchain import run_platformio_cli_global
 
-    pio_args = ["system", "prune"]
-    if args.dry_run:
-        pio_args.append("--dry-run")
-        _LOGGER.info("Showing unused PlatformIO data that would be removed...")
-    else:
-        pio_args.append("--force")
-        _LOGGER.info("Removing unused PlatformIO data...")
-    rc = run_platformio_cli_global(*pio_args)
+    _LOGGER.info("Removing unused PlatformIO data...")
+    # --force skips PlatformIO's interactive confirmation (which otherwise
+    # aborts when run non-interactively, e.g. from the dashboard).
+    rc = run_platformio_cli_global("system", "prune", "--force")
     if rc != 0:
         _LOGGER.error("Error pruning PlatformIO data")
         return rc
@@ -2394,15 +2390,10 @@ def parse_args(argv):
         "configuration", help="Your YAML file or configuration directory.", nargs="*"
     )
 
-    parser_prune = subparsers.add_parser(
+    subparsers.add_parser(
         "prune",
         help="Remove unused PlatformIO data (toolchains, packages and caches no "
         "longer referenced by any installed platform) to free disk space.",
-    )
-    parser_prune.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be removed without deleting anything.",
     )
 
     # The dashboard moved to ESPHome Device Builder; the command is kept only to
