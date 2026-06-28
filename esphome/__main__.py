@@ -1660,6 +1660,15 @@ def command_clean_all(args: ArgsProtocol) -> int | None:
 def command_prune(args: ArgsProtocol) -> int | None:
     from esphome.platformio.toolchain import run_platformio_cli_global
 
+    # Uninstall the esp32 PlatformIO platform so its toolchains/frameworks become
+    # prunable. ``system prune`` only reclaims packages that no installed
+    # platform references, so the platform itself has to be removed first.
+    # PlatformIO re-installs it on demand if a build needs it again, so this is
+    # safe to do unconditionally; a non-zero result just means it wasn't
+    # installed.
+    _LOGGER.info("Removing the esp32 PlatformIO platform...")
+    run_platformio_cli_global("platform", "uninstall", "espressif32")
+
     _LOGGER.info("Removing unused PlatformIO data...")
     # --force skips PlatformIO's interactive confirmation (which otherwise
     # aborts when run non-interactively, e.g. from the dashboard).
