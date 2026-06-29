@@ -31,6 +31,7 @@ from esphome.storage_json import StorageJSON
 from . import gpio  # noqa: F401
 from .const import (
     COMPONENT_BK72XX,
+    COMPONENT_LN882X,
     CONF_GPIO_RECOVER,
     CONF_LOGLEVEL,
     CONF_SDK_SILENT,
@@ -491,8 +492,16 @@ async def component_to_code(config):
     # IRAM_ATTR is a no-op on BK72xx (SDK masks FIQ+IRQ around flash ops).
     # On other families, patch_linker.py routes .sram.text into the right
     # RAM-executable output section and prints a post-link placement summary.
+    extra_scripts = []
     if FAMILY_COMPONENT[config[CONF_FAMILY]] != COMPONENT_BK72XX:
-        cg.add_platformio_option("extra_scripts", ["pre:patch_linker.py"])
+        extra_scripts.append("pre:patch_linker.py")
+    # ltchiptool 4.14.2 breaks ln882x image generation against the LibreTiny
+    # version we pin; pin_ltchiptool.py forces a compatible version into the
+    # platform's build venv. See that script for details.
+    if FAMILY_COMPONENT[config[CONF_FAMILY]] == COMPONENT_LN882X:
+        extra_scripts.append("post:pin_ltchiptool.py")
+    if extra_scripts:
+        cg.add_platformio_option("extra_scripts", extra_scripts)
     # dummy version code
     cg.add_define("USE_ARDUINO_VERSION_CODE", cg.RawExpression("VERSION_CODE(0, 0, 0)"))
     # decrease web server stack size (16k words -> 4k words)
@@ -582,8 +591,11 @@ async def component_to_code(config):
 # Called by writer.py
 def copy_files() -> None:
     script_dir = Path(__file__).parent
-    patch_linker_file = script_dir / "patch_linker.py.script"
     copy_file_if_changed(
-        patch_linker_file,
+        script_dir / "patch_linker.py.script",
         CORE.relative_build_path("patch_linker.py"),
+    )
+    copy_file_if_changed(
+        script_dir / "pin_ltchiptool.py.script",
+        CORE.relative_build_path("pin_ltchiptool.py"),
     )

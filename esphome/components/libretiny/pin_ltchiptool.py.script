@@ -1,0 +1,48 @@
+# pylint: disable=E0602
+Import("env")  # noqa
+
+import subprocess
+
+# ltchiptool 4.14.2 renamed the LN882H flash regions (part_tab -> part_table,
+# kv -> ln_kv) to match an as-yet-unreleased LibreTiny board layout, so it fails
+# ln882x image generation against the LibreTiny version we pin with
+# "flash region 'part_table' does not exist". The LibreTiny platform installs
+# ltchiptool into its own build venv and skips reinstall whenever any
+# >=4.13.0,<5.0 version is already cached, so a previously installed 4.14.2 is
+# not downgraded by PIP_CONSTRAINT alone. Force a compatible version into the
+# build venv here, but only touch pip when the cached version is actually too
+# new (keeps offline rebuilds working).
+#
+# Remove once the libretiny platform is bumped to a release compatible with
+# ltchiptool >= 4.14.2. See https://github.com/libretiny-eu/ltchiptool/issues/94
+
+ltpython = env.subst("${LTPYTHONEXE}")
+
+
+def _installed_version() -> str:
+    try:
+        output = subprocess.check_output(
+            [ltpython, "-m", "pip", "show", "ltchiptool"], text=True
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+    for line in output.splitlines():
+        if line.startswith("Version:"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+def _is_too_new(version: str) -> bool:
+    try:
+        parts = tuple(int(part) for part in version.split(".")[:3])
+    except ValueError:
+        return False
+    return parts >= (4, 14, 2)
+
+
+if _is_too_new(_installed_version()):
+    print("ltchiptool >= 4.14.2 is incompatible with this LibreTiny version; downgrading")
+    subprocess.run(
+        [ltpython, "-m", "pip", "install", "--quiet", "ltchiptool<4.14.2"],
+        check=False,
+    )
