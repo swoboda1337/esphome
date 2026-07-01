@@ -760,7 +760,7 @@ def _format_framework_pio_espidf_version(
     ver: cv.Version, release: str | None = None
 ) -> str:
     # format the given espidf version to a PIO platformio/framework-espidf value.
-    # Releases come from pioarduino/esp-idf, except ESP-IDF 6.0+ which is sourced
+    # Releases come from pioarduino/esp-idf, except ESP-IDF 6.0.2+ which is sourced
     # from esphome-libs/esp-idf.
     if ver == cv.Version(5, 4, 3) or ver >= cv.Version(5, 5, 1):
         ext = "tar.xz"
@@ -772,9 +772,9 @@ def _format_framework_pio_espidf_version(
     if ver.extra:
         sep = "." if str(ver.extra).isdigit() else "-"
         ver_str += f"{sep}{ver.extra}"
-    # ESP-IDF 6.0+ is not published under pioarduino/esp-idf yet; use the
+    # ESP-IDF 6.0.2+ is not published under pioarduino/esp-idf; use the
     # esphome-libs repackaged releases for those versions.
-    repo = "esphome-libs" if ver >= cv.Version(6, 0, 0) else "pioarduino"
+    repo = "esphome-libs" if ver >= cv.Version(6, 0, 2) else "pioarduino"
     tag = f"v{ver_str}.{release}" if release else f"v{ver_str}"
     return f"pioarduino/framework-espidf@https://github.com/{repo}/esp-idf/releases/download/{tag}/esp-idf-v{ver_str}.{ext}"
 
@@ -858,6 +858,12 @@ ESP_IDF_FRAMEWORK_VERSION_LOOKUP = {
 ESP_IDF_PLATFORM_VERSION_LOOKUP = {
     cv.Version(
         6, 0, 2
+    ): "https://github.com/pioarduino/platform-espressif32.git#prep_IDF6",
+    cv.Version(
+        6, 0, 1
+    ): "https://github.com/pioarduino/platform-espressif32.git#prep_IDF6",
+    cv.Version(
+        6, 0, 0
     ): "https://github.com/pioarduino/platform-espressif32.git#prep_IDF6",
     cv.Version(5, 5, 4): cv.Version(55, 3, 39),
     cv.Version(5, 5, 3, "1"): cv.Version(55, 3, 37),
