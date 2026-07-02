@@ -58,7 +58,7 @@ from esphome.framework_helpers import (
     get_project_link_flags,
     run_command_ok,
 )
-from esphome.helpers import write_file_if_changed
+from esphome.helpers import rmtree, write_file_if_changed
 from esphome.storage_json import StorageJSON
 from esphome.types import ConfigType
 
@@ -758,25 +758,28 @@ def run_compile(args, config: ConfigType) -> bool:
     build_dir = CORE.relative_pioenvs_path(CORE.name)
     source_dir = CORE.relative_build_path("zephyr")
 
-    # Force a pristine rebuild when a configure-time input changed: either the
-    # CMakeLists.txt written above, or the CMake cache is gone because
+    # Wipe the build directory when a configure-time input changed: either
+    # the CMakeLists.txt written above, or the CMake cache is gone because
     # zephyr's copy_files() dropped it after a prj.conf/overlay/pm_static/
     # Kconfig change. Zephyr caches Kconfig and devicetree results in the
-    # build dir, and west's --pristine=auto only detects board/build-system
-    # mismatches, so stale caches otherwise survive a config change.
+    # build dir and a plain cmake re-run keeps them, so only a pristine
+    # build reliably picks up the new config. We delete the directory
+    # ourselves because west cannot: its pristine handling (both always and
+    # auto) only wipes directories it recognizes as Zephyr build dirs, which
+    # requires reading ZEPHYR_BASE from the very cache that was dropped.
     # Unchanged configs keep fully incremental builds via --pristine=auto.
-    pristine = (
-        "always"
-        if cmake_lists_changed or not (build_dir / "CMakeCache.txt").is_file()
-        else "auto"
-    )
+    if (
+        cmake_lists_changed or not (build_dir / "CMakeCache.txt").is_file()
+    ) and build_dir.is_dir():
+        _LOGGER.info("Build inputs changed, cleaning %s", build_dir)
+        rmtree(build_dir)
 
     west_cmd = [
         str(paths["python_executable"]),
         "-m",
         "west",
         "build",
-        f"--pristine={pristine}",
+        "--pristine=auto",
         "-b",
         board,
         "-d",
