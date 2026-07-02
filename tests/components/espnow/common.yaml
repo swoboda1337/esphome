@@ -76,3 +76,10 @@ sensor:
     provider: test-provider
     remote_id: espnow_temp_sensor
     id: remote_temp
+
+button:
+  - platform: template
+    name: ESP-NOW toggle
+    on_press:
+      - espnow.disable:
+      - espnow.enable:

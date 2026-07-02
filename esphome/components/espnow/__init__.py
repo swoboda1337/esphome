@@ -35,6 +35,8 @@ ESPNowRecvInfoConstRef = ESPNowRecvInfo.operator("const").operator("ref")
 
 SendAction = espnow_ns.class_("SendAction", automation.Action)
 SetChannelAction = espnow_ns.class_("SetChannelAction", automation.Action)
+EnableAction = espnow_ns.class_("EnableAction", automation.Action)
+DisableAction = espnow_ns.class_("DisableAction", automation.Action)
 AddPeerAction = espnow_ns.class_("AddPeerAction", automation.Action)
 DeletePeerAction = espnow_ns.class_("DeletePeerAction", automation.Action)
 
@@ -291,6 +293,36 @@ async def peer_action(
     await cg.register_parented(var, config[CONF_ID])
     await register_peer(var, config, args)
 
+    return var
+
+
+ENABLE_DISABLE_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(): cv.use_id(ESPNowComponent),
+    }
+)
+
+
+@automation.register_action(
+    "espnow.enable",
+    EnableAction,
+    ENABLE_DISABLE_SCHEMA,
+    synchronous=True,
+)
+@automation.register_action(
+    "espnow.disable",
+    DisableAction,
+    ENABLE_DISABLE_SCHEMA,
+    synchronous=True,
+)
+async def enable_disable_action(
+    config: ConfigType,
+    action_id: core.ID,
+    template_arg: cg.TemplateArguments,
+    args: list[tuple],
+):
+    var = cg.new_Pvariable(action_id, template_arg)
+    await cg.register_parented(var, config[CONF_ID])
     return var
 
 

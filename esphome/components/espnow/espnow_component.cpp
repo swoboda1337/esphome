@@ -184,6 +184,7 @@ void ESPNowComponent::enable_() {
     ESP_ERROR_CHECK(esp_wifi_disconnect());
 
     this->apply_wifi_channel();
+    this->radio_started_ = true;
   }
   this->get_wifi_channel();
 
@@ -231,6 +232,14 @@ void ESPNowComponent::disable() {
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "esp_now_deinit failed! 0x%x", err);
   }
+
+  // If the radio was started by enable_() rather than the wifi component,
+  // stop it again so a disabled ESP-NOW doesn't keep the radio powered.
+  if (this->radio_started_ && !this->is_wifi_enabled()) {
+    esp_wifi_stop();
+    esp_wifi_deinit();
+  }
+  this->radio_started_ = false;
 }
 
 void ESPNowComponent::apply_wifi_channel() {

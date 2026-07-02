@@ -176,6 +176,9 @@ class ESPNowComponent final : public Component {
 
   bool auto_add_peer_{false};
   bool enable_on_boot_{true};
+  // Whether enable_() started the radio itself (no active wifi component);
+  // disable() then stops it again.
+  bool radio_started_{false};
 };
 
 extern ESPNowComponent *global_esp_now;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)

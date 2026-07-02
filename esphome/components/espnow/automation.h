@@ -106,6 +106,16 @@ template<typename... Ts> class DeletePeerAction final : public Action<Ts...>, pu
   }
 };
 
+template<typename... Ts> class EnableAction final : public Action<Ts...>, public Parented<ESPNowComponent> {
+ protected:
+  void play(const Ts &...x) override { this->parent_->enable(); }
+};
+
+template<typename... Ts> class DisableAction final : public Action<Ts...>, public Parented<ESPNowComponent> {
+ protected:
+  void play(const Ts &...x) override { this->parent_->disable(); }
+};
+
 template<typename... Ts> class SetChannelAction final : public Action<Ts...>, public Parented<ESPNowComponent> {
   TEMPLATABLE_VALUE(uint8_t, channel)
 
