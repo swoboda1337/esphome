@@ -806,22 +806,29 @@ void LD2412Component::set_basic_config() {
 
 #ifdef USE_NUMBER
 void LD2412Component::set_gate_threshold() {
-  if (this->gate_move_threshold_numbers_.empty() && this->gate_still_threshold_numbers_.empty()) {
-    return;  // No gate threshold numbers set; nothing to do here
+  uint8_t move_value[TOTAL_GATES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  uint8_t still_value[TOTAL_GATES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  bool have_move = false;
+  bool have_still = false;
+  for (size_t i = 0; i < TOTAL_GATES; i++) {
+    if (this->gate_move_threshold_numbers_[i] != nullptr) {
+      move_value[i] = lowbyte(static_cast<int>(this->gate_move_threshold_numbers_[i]->state));
+      have_move = true;
+    }
+    if (this->gate_still_threshold_numbers_[i] != nullptr) {
+      still_value[i] = lowbyte(static_cast<int>(this->gate_still_threshold_numbers_[i]->state));
+      have_still = true;
+    }
   }
-  uint8_t value[TOTAL_GATES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  if (!have_move && !have_still) {
+    return;
+  }
   this->set_config_mode_(true);
-  if (!this->gate_move_threshold_numbers_.empty()) {
-    for (size_t i = 0; i < this->gate_move_threshold_numbers_.size(); i++) {
-      value[i] = lowbyte(static_cast<int>(this->gate_move_threshold_numbers_[i]->state));
-    }
-    this->send_command_(CMD_MOTION_GATE_SENS, value, sizeof(value));
+  if (have_move) {
+    this->send_command_(CMD_MOTION_GATE_SENS, move_value, sizeof(move_value));
   }
-  if (!this->gate_still_threshold_numbers_.empty()) {
-    for (size_t i = 0; i < this->gate_still_threshold_numbers_.size(); i++) {
-      value[i] = lowbyte(static_cast<int>(this->gate_still_threshold_numbers_[i]->state));
-    }
-    this->send_command_(CMD_STATIC_GATE_SENS, value, sizeof(value));
+  if (have_still) {
+    this->send_command_(CMD_STATIC_GATE_SENS, still_value, sizeof(still_value));
   }
   this->set_config_mode_(false);
 }
