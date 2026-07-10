@@ -202,7 +202,8 @@ void ThermostatClimate::validate_target_temperature_high() {
 void ThermostatClimate::validate_target_humidity() {
   if (std::isnan(this->target_humidity)) {
     this->target_humidity =
-        (this->get_traits().get_visual_max_humidity() - this->get_traits().get_visual_min_humidity()) / 2.0f;
+        ((this->get_traits().get_visual_max_humidity() - this->get_traits().get_visual_min_humidity()) / 2.0f) +
+        this->get_traits().get_visual_min_humidity();
   } else {
     this->target_humidity = clamp<float>(this->target_humidity, this->get_traits().get_visual_min_humidity(),
                                          this->get_traits().get_visual_max_humidity());
