@@ -208,7 +208,7 @@ def maybe_empty_debug(value):
 
 
 def validate_port(value):
-    if not re.match(r"^/(?:[^/]+/)[^/]+$", value):
+    if not re.match(r"^/(?:[^/]+/)+[^/]+$", value):
         raise cv.Invalid("Port must be a valid device path")
     return value
 
