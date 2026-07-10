@@ -463,7 +463,7 @@ haier_protocol::HandlerError Smartair2Climate::process_status_message_(const uin
       if (this->mode == CLIMATE_MODE_OFF) {
         // AC just turned on from remote need to turn off display
         this->force_send_control_ = true;
-      } else if ((((uint8_t) this->health_mode_) & 0b10) == 0) {
+      } else if ((((uint8_t) this->display_status_) & 0b10) == 0) {
         this->display_status_ = disp_status ? SwitchState::ON : SwitchState::OFF;
       }
     }
