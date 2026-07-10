@@ -38,7 +38,7 @@ void HLW8032Component::loop() {
         this->header_found_ = true;
         this->raw_data_[0] = data;
       }
-    } else if (data == CHECK_REG) {
+    } else if (data == CHECK_REG && this->raw_data_index_ < 2) {
       this->raw_data_[1] = data;
       this->raw_data_index_ = 2;
       this->check_ = 0;
