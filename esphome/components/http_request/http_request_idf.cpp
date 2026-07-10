@@ -19,6 +19,11 @@ namespace esphome::http_request {
 static const char *const TAG = "http_request.idf";
 static constexpr uint32_t ERROR_DURATION_MS = 1000;
 
+static size_t fetch_content_length(esp_http_client_handle_t client) {
+  int64_t length = esp_http_client_fetch_headers(client);
+  return length < 0 ? 0 : static_cast<size_t>(length);
+}
+
 struct UserData {
   const std::vector<std::string> &lower_case_collect_headers;
   std::vector<Header> &response_headers;
@@ -166,7 +171,7 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::perform(const std::string &url, c
   container->feed_wdt();
   // esp_http_client_fetch_headers() returns 0 for chunked transfer encoding (no Content-Length header).
   // The read() method handles content_length == 0 specially to support chunked responses.
-  container->content_length = esp_http_client_fetch_headers(client);
+  container->content_length = fetch_content_length(client);
   container->set_chunked(esp_http_client_is_chunked_response(client));
   container->feed_wdt();
   container->status_code = esp_http_client_get_status_code(client);
@@ -201,7 +206,7 @@ std::shared_ptr<HttpContainer> HttpRequestIDF::perform(const std::string &url, c
       }
 
       container->feed_wdt();
-      container->content_length = esp_http_client_fetch_headers(client);
+      container->content_length = fetch_content_length(client);
       container->set_chunked(esp_http_client_is_chunked_response(client));
       container->feed_wdt();
       container->status_code = esp_http_client_get_status_code(client);
