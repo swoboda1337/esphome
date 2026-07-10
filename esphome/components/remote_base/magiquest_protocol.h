@@ -21,7 +21,7 @@ struct MagiQuestData {
     if (rhs.wand_id != this->wand_id) {
       return false;
     }
-    return (this->wand_id == 0xffff || rhs.wand_id == 0xffff || this->wand_id == rhs.wand_id);
+    return (this->magnitude == 0xffff || rhs.magnitude == 0xffff || this->magnitude == rhs.magnitude);
   }
 };
 
