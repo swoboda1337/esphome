@@ -1,4 +1,5 @@
 packages:
+  device_base: !include common.yaml
   web_server: !include common_v2.yaml
 
 web_server:
