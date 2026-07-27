@@ -7,7 +7,6 @@
 #include <esp_image_format.h>
 #include <esp_app_desc.h>
 #include <esp_hosted.h>
-#include <esp_hosted_host_fw_ver.h>
 #include <esp_ota_ops.h>
 
 #ifdef USE_ESP32_HOSTED_HTTP_UPDATE
@@ -32,11 +31,11 @@ constexpr size_t CHUNK_SIZE = 1500;
 constexpr uint32_t INITIAL_CHECK_INTERVAL_ID = 0;
 #endif
 
-// Compile-time version string from esp_hosted_host_fw_ver.h macros
+// Compile-time version string from the esp_hosted version pinned in Python
 #define STRINGIFY_(x) #x
 #define STRINGIFY(x) STRINGIFY_(x)
-static const char *const ESP_HOSTED_VERSION_STR = STRINGIFY(ESP_HOSTED_VERSION_MAJOR_1) "." STRINGIFY(
-    ESP_HOSTED_VERSION_MINOR_1) "." STRINGIFY(ESP_HOSTED_VERSION_PATCH_1);
+static const char *const ESP_HOSTED_VERSION_STR = STRINGIFY(USE_ESP32_HOSTED_VERSION_MAJOR) "." STRINGIFY(
+    USE_ESP32_HOSTED_VERSION_MINOR) "." STRINGIFY(USE_ESP32_HOSTED_VERSION_PATCH);
 
 #ifdef USE_ESP32_HOSTED_HTTP_UPDATE
 // Parse an integer from str, advancing ptr past the number
@@ -269,8 +268,8 @@ bool Esp32HostedUpdate::fetch_manifest_() {
       }
 
       // Check if this version is compatible (not newer than host)
-      if (compare_versions(major, minor, patch, ESP_HOSTED_VERSION_MAJOR_1, ESP_HOSTED_VERSION_MINOR_1,
-                           ESP_HOSTED_VERSION_PATCH_1) > 0) {
+      if (compare_versions(major, minor, patch, USE_ESP32_HOSTED_VERSION_MAJOR, USE_ESP32_HOSTED_VERSION_MINOR,
+                           USE_ESP32_HOSTED_VERSION_PATCH) > 0) {
         continue;
       }
 

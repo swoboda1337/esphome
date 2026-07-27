@@ -21,6 +21,8 @@ CODEOWNERS = ["@swoboda1337"]
 # esp32_ble raises the task watchdog around the remote BT controller bring-up
 AUTO_LOAD = ["watchdog"]
 
+ESP_HOSTED_VERSION = "3.0.5"
+
 CONF_ACTIVE_HIGH = "active_high"
 CONF_BUS_WIDTH = "bus_width"
 CONF_CMD_PIN = "cmd_pin"
@@ -116,127 +118,127 @@ def _validate_spi(config):
     return config
 
 
-CONFIG_SCHEMA = cv.typed_schema(
-    {
-        "sdio": cv.All(SDIO_SCHEMA, _validate_sdio),
-        "spi": cv.All(SPI_SCHEMA, _validate_spi),
-    },
-    default_type="sdio",
+CONFIG_SCHEMA = cv.All(
+    cv.typed_schema(
+        {
+            "sdio": cv.All(SDIO_SCHEMA, _validate_sdio),
+            "spi": cv.All(SPI_SCHEMA, _validate_spi),
+        },
+        default_type="sdio",
+    ),
+    # esp_hosted 3.x requires ESP-IDF 5.5 or newer
+    cv.require_framework_version(esp_idf=cv.Version(5, 5, 0)),
 )
 
 
 def _configure_sdio(config):
-    slot = config[CONF_SLOT]
+    esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_HOST_TRANSPORT_BUS_SDIO", True)
     esp32.add_idf_sdkconfig_option(
-        f"CONFIG_ESP_HOSTED_SDIO_SLOT_{slot}",
+        f"CONFIG_ESP_HOSTED_SDIO_SLOT_{config[CONF_SLOT]}",
         True,
     )
-    if config[CONF_BUS_WIDTH] == 1:
-        esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_SDIO_1_BIT_BUS", True)
-    else:
-        esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_SDIO_4_BIT_BUS", True)
     esp32.add_idf_sdkconfig_option(
-        f"CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_CLK_SLOT_{slot}",
-        config[CONF_CLK_PIN],
+        f"CONFIG_ESP_HOSTED_HOST_SDIO_BUS_WIDTH_{config[CONF_BUS_WIDTH]}",
+        True,
     )
     esp32.add_idf_sdkconfig_option(
-        f"CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_CMD_SLOT_{slot}",
-        config[CONF_CMD_PIN],
+        "CONFIG_ESP_HOSTED_HOST_SDIO_PIN_CLK", config[CONF_CLK_PIN]
     )
     esp32.add_idf_sdkconfig_option(
-        f"CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D0_SLOT_{slot}",
-        config[CONF_D0_PIN],
+        "CONFIG_ESP_HOSTED_HOST_SDIO_PIN_CMD", config[CONF_CMD_PIN]
+    )
+    esp32.add_idf_sdkconfig_option(
+        "CONFIG_ESP_HOSTED_HOST_SDIO_PIN_D0", config[CONF_D0_PIN]
     )
     if config[CONF_BUS_WIDTH] == 4:
         esp32.add_idf_sdkconfig_option(
-            f"CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D1_4BIT_BUS_SLOT_{slot}",
-            config[CONF_D1_PIN],
+            "CONFIG_ESP_HOSTED_HOST_SDIO_PIN_D1", config[CONF_D1_PIN]
         )
         esp32.add_idf_sdkconfig_option(
-            f"CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D2_4BIT_BUS_SLOT_{slot}",
-            config[CONF_D2_PIN],
+            "CONFIG_ESP_HOSTED_HOST_SDIO_PIN_D2", config[CONF_D2_PIN]
         )
         esp32.add_idf_sdkconfig_option(
-            f"CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D3_4BIT_BUS_SLOT_{slot}",
-            config[CONF_D3_PIN],
+            "CONFIG_ESP_HOSTED_HOST_SDIO_PIN_D3", config[CONF_D3_PIN]
         )
-    esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_CUSTOM_SDIO_PINS", True)
     esp32.add_idf_sdkconfig_option(
-        "CONFIG_ESP_HOSTED_SDIO_CLOCK_FREQ_KHZ",
+        "CONFIG_ESP_HOSTED_HOST_SDIO_CLK_KHZ",
         int(config[CONF_SDIO_FREQUENCY] // 1000),
     )
 
 
 def _configure_spi(config):
-    esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_SPI_HOST_INTERFACE", True)
-    # SPI mode is set via per-variant choice options
-    variant = config[CONF_VARIANT]
-    mode = config[CONF_SPI_MODE]
-    suffix = "ESP32" if variant == "ESP32" else "ESP32XX"
+    esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_HOST_TRANSPORT_BUS_SPI", True)
+    # P4/H2 hosts don't have VSPI
+    esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_HOST_SPI_CONTROLLER_HSPI", True)
     esp32.add_idf_sdkconfig_option(
-        f"CONFIG_ESP_HOSTED_SPI_PRIV_MODE_{mode}_{suffix}",
-        True,
-    )
-    # Frequency is set via per-variant options
-    freq_mhz = int(config[CONF_FREQUENCY] // 1e6)
-    if variant == "ESP32":
-        esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_SPI_FREQ_ESP32", freq_mhz)
-    elif variant == "ESP32C6":
-        esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_SPI_FREQ_ESP32C6", freq_mhz)
-    else:
-        esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_SPI_FREQ_ESP32XX", freq_mhz)
-    # Pin configuration (use HSPI variant as P4/H2 hosts don't have VSPI)
-    esp32.add_idf_sdkconfig_option(
-        "CONFIG_ESP_HOSTED_SPI_HSPI_GPIO_MOSI", config[CONF_MOSI_PIN]
+        "CONFIG_ESP_HOSTED_HOST_SPI_MODE", config[CONF_SPI_MODE]
     )
     esp32.add_idf_sdkconfig_option(
-        "CONFIG_ESP_HOSTED_SPI_HSPI_GPIO_MISO", config[CONF_MISO_PIN]
+        "CONFIG_ESP_HOSTED_HOST_SPI_CLK_MHZ", int(config[CONF_FREQUENCY] // 1e6)
     )
     esp32.add_idf_sdkconfig_option(
-        "CONFIG_ESP_HOSTED_SPI_HSPI_GPIO_CLK", config[CONF_CLK_PIN]
+        "CONFIG_ESP_HOSTED_HOST_SPI_MOSI_GPIO", config[CONF_MOSI_PIN]
     )
     esp32.add_idf_sdkconfig_option(
-        "CONFIG_ESP_HOSTED_SPI_HSPI_GPIO_CS", config[CONF_CS_PIN]
+        "CONFIG_ESP_HOSTED_HOST_SPI_MISO_GPIO", config[CONF_MISO_PIN]
     )
     esp32.add_idf_sdkconfig_option(
-        "CONFIG_ESP_HOSTED_SPI_GPIO_HANDSHAKE", config[CONF_HANDSHAKE_PIN]
+        "CONFIG_ESP_HOSTED_HOST_SPI_CLK_GPIO", config[CONF_CLK_PIN]
     )
     esp32.add_idf_sdkconfig_option(
-        "CONFIG_ESP_HOSTED_SPI_GPIO_DATA_READY", config[CONF_DATA_READY_PIN]
+        "CONFIG_ESP_HOSTED_HOST_SPI_CS_GPIO", config[CONF_CS_PIN]
+    )
+    esp32.add_idf_sdkconfig_option(
+        "CONFIG_ESP_HOSTED_HOST_HANDSHAKE_GPIO", config[CONF_HANDSHAKE_PIN]
+    )
+    esp32.add_idf_sdkconfig_option(
+        "CONFIG_ESP_HOSTED_HOST_DATA_READY_GPIO", config[CONF_DATA_READY_PIN]
     )
     # Handshake and data_ready polarity
     if config[CONF_HANDSHAKE_ACTIVE_HIGH]:
-        esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_HS_ACTIVE_HIGH", True)
+        esp32.add_idf_sdkconfig_option(
+            "CONFIG_ESP_HOSTED_SPI_HANDSHAKE_ACTIVE_HIGH", True
+        )
     else:
-        esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_HS_ACTIVE_LOW", True)
+        esp32.add_idf_sdkconfig_option(
+            "CONFIG_ESP_HOSTED_SPI_HANDSHAKE_ACTIVE_LOW", True
+        )
     if config[CONF_DATA_READY_ACTIVE_HIGH]:
-        esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_DR_ACTIVE_HIGH", True)
+        esp32.add_idf_sdkconfig_option(
+            "CONFIG_ESP_HOSTED_SPI_DATAREADY_ACTIVE_HIGH", True
+        )
     else:
-        esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_DR_ACTIVE_LOW", True)
+        esp32.add_idf_sdkconfig_option(
+            "CONFIG_ESP_HOSTED_SPI_DATAREADY_ACTIVE_LOW", True
+        )
 
 
 async def to_code(config):
     add_define("USE_ESP32_HOSTED")
     transport = config[CONF_TYPE]
-    transport_prefix = "SDIO" if transport == "sdio" else "SPI"
 
-    # Reset polarity
-    if config[CONF_ACTIVE_HIGH]:
-        esp32.add_idf_sdkconfig_option(
-            f"CONFIG_ESP_HOSTED_{transport_prefix}_RESET_ACTIVE_HIGH", True
-        )
+    # Reset GPIO and polarity. active_high keeps its 2.x meaning (the reset
+    # line parks high and a low pulse resets the co-processor); 3.x names the
+    # polarity after the pulse level, so active_high maps to RESET_ACTIVE_LOW.
+    esp32.add_idf_sdkconfig_option(
+        "CONFIG_ESP_HOSTED_HOST_RESET_GPIO", config[CONF_RESET_PIN]
+    )
+    if transport == "sdio":
+        if config[CONF_ACTIVE_HIGH]:
+            esp32.add_idf_sdkconfig_option(
+                "CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_LOW", True
+            )
+        else:
+            esp32.add_idf_sdkconfig_option(
+                "CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_HIGH", True
+            )
     else:
         esp32.add_idf_sdkconfig_option(
-            f"CONFIG_ESP_HOSTED_{transport_prefix}_RESET_ACTIVE_LOW", True
+            "CONFIG_ESP_HOSTED_HOST_RESET_ACTIVE_LOW", config[CONF_ACTIVE_HIGH]
         )
-    # Reset GPIO
+    # Co-processor variant
     esp32.add_idf_sdkconfig_option(
-        f"CONFIG_ESP_HOSTED_{transport_prefix}_GPIO_RESET_SLAVE",  # NOLINT
-        config[CONF_RESET_PIN],
-    )
-    # Slave variant  # NOLINT
-    esp32.add_idf_sdkconfig_option(
-        f"CONFIG_SLAVE_IDF_TARGET_{config[CONF_VARIANT]}",  # NOLINT
+        f"CONFIG_ESP_HOSTED_CP_TARGET_{config[CONF_VARIANT]}",
         True,
     )
 
@@ -246,24 +248,26 @@ async def to_code(config):
     else:
         _configure_spi(config)
 
-    # Place the transport mempool in PSRAM. Required on memory-tight host
-    # configurations (e.g. P4 with a large LVGL UI) where the internal-RAM
-    # mempool allocation fails at boot with `sdio_mempool_create` assert.
+    # Place Hosted task stacks in PSRAM to relieve internal RAM on
+    # memory-tight host configurations (e.g. P4 with a large LVGL UI).
     if config[CONF_USE_PSRAM]:
-        esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM", True)
+        esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_DFLT_TASK_FROM_SPIRAM", True)
 
     # Library versions
     idf_ver = esp32.idf_version()
     os.environ["ESP_IDF_VERSION"] = f"{idf_ver.major}.{idf_ver.minor}"
-    if idf_ver >= cv.Version(5, 5, 0):
-        esp32.add_idf_component(name="espressif/esp_wifi_remote", ref="1.5.1")
-        esp32.add_idf_component(name="espressif/wifi_remote_over_eppp", ref="0.3.2")
-        esp32.add_idf_component(name="espressif/eppp_link", ref="1.1.5")
-        esp32.add_idf_component(name="espressif/esp_hosted", ref="2.12.11")
-    else:
-        esp32.add_idf_component(name="espressif/esp_wifi_remote", ref="0.13.0")
-        esp32.add_idf_component(name="espressif/eppp_link", ref="0.2.0")
-        esp32.add_idf_component(name="espressif/esp_hosted", ref="2.0.11")
+    esp32.add_idf_component(name="espressif/esp_wifi_remote", ref="1.5.1")
+    esp32.add_idf_component(name="espressif/wifi_remote_over_eppp", ref="0.3.2")
+    esp32.add_idf_component(name="espressif/eppp_link", ref="1.1.5")
+    esp32.add_idf_component(name="espressif/esp_hosted", ref=ESP_HOSTED_VERSION)
+
+    # esp_hosted 3.x ships a 2.x compat layer whose version macros report the
+    # compat API level, not the library version; export the pinned version for
+    # the update platform.
+    major, minor, patch = (int(x) for x in ESP_HOSTED_VERSION.split("."))
+    add_define("USE_ESP32_HOSTED_VERSION_MAJOR", major)
+    add_define("USE_ESP32_HOSTED_VERSION_MINOR", minor)
+    add_define("USE_ESP32_HOSTED_VERSION_PATCH", patch)
     esp32.add_extra_script(
         "post",
         "esp32_hosted.py",
