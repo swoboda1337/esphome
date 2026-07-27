@@ -91,6 +91,10 @@ FINAL_VALIDATE_SCHEMA = _validate_firmware
 async def to_code(config: dict[str, Any]) -> None:
     var = await update.new_update(config)
 
+    # A 2.x co-processor erases its whole OTA partition inside ota_begin
+    # before responding, which takes longer than the 5s default RPC timeout.
+    esp32.add_idf_sdkconfig_option("CONFIG_ESP_HOSTED_HOST_RPC_TIMEOUT_MS", 30000)
+
     if config[CONF_TYPE] == TYPE_EMBEDDED:
         path = config[CONF_PATH]
         with CORE.relative_config_path(path).open("rb") as f:
