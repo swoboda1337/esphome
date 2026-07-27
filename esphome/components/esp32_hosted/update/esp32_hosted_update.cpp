@@ -18,6 +18,8 @@
 extern "C" {
 #include <esp_hosted_ota.h>
 }
+#include <eh_host_feat_rpc.h>
+#include <eh_host_feat_rpc_ext_v2_types.h>
 
 namespace esphome::esp32_hosted {
 
@@ -25,6 +27,26 @@ static const char *const TAG = "esp32_hosted.update";
 
 // Older coprocessor firmware versions have a 1500-byte limit per RPC call
 constexpr size_t CHUNK_SIZE = 1500;
+
+// A 2.x coprocessor erases its entire OTA partition inside ota_begin before
+// responding, which takes longer than the 5 second default RPC timeout the
+// compat OTA begin wrapper uses. Issue the request directly with a longer
+// per-request timeout.
+constexpr uint32_t OTA_BEGIN_TIMEOUT_MS = 30000;
+
+static esp_err_t hosted_ota_begin() {
+  eh_rpc_ctrl_cmd_t *req = eh_rpc_ctrl_cmd_alloc();
+  if (req == nullptr)
+    return ESP_FAIL;
+  req->rsp_timeout_ms = OTA_BEGIN_TIMEOUT_MS;
+  void *resp = nullptr;
+  if (eh_host_feat_rpc_request_sync(RPC_ID__Req_OTABegin, req, &resp) != 0)
+    return ESP_FAIL;
+  auto *r = static_cast<eh_rpc_ctrl_cmd_t *>(resp);
+  auto status = static_cast<esp_err_t>(r->resp_event_status);
+  eh_rpc_ctrl_cmd_free(r);
+  return status;
+}
 
 #ifdef USE_ESP32_HOSTED_HTTP_UPDATE
 // Interval/timeout IDs (uint32_t to avoid string comparison)
@@ -326,7 +348,7 @@ bool Esp32HostedUpdate::stream_firmware_to_coprocessor_() {
   ESP_LOGI(TAG, "Firmware size: %zu bytes", total_size);
 
   // Begin OTA on coprocessor
-  esp_err_t err = esp_hosted_slave_ota_begin();  // NOLINT
+  esp_err_t err = hosted_ota_begin();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to begin OTA: %s", esp_err_to_name(err));
     container->end();
@@ -415,7 +437,7 @@ bool Esp32HostedUpdate::write_embedded_firmware_to_coprocessor_() {
 
   ESP_LOGI(TAG, "Starting OTA update (%zu bytes)", this->firmware_size_);
 
-  esp_err_t err = esp_hosted_slave_ota_begin();  // NOLINT
+  esp_err_t err = hosted_ota_begin();
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to begin OTA: %s", esp_err_to_name(err));
     this->status_set_error(LOG_STR("Failed to begin OTA"));
