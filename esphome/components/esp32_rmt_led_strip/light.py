@@ -70,6 +70,44 @@ CONF_RESET_HIGH = "reset_high"
 CONF_RESET_LOW = "reset_low"
 
 
+# The previous fixed rmt_symbols defaults, which equal the variant's entire
+# RMT TX memory pool on chips with dedicated TX blocks (4 x 48 on S3/P4,
+# 2 x 48 on C3/C5/C6/H2), leaving none for other RMT users such as
+# remote_transmitter
+_RMT_SYMBOL_CAPS = {
+    esp32.VARIANT_ESP32: 192,
+    esp32.VARIANT_ESP32C3: 96,
+    esp32.VARIANT_ESP32C5: 96,
+    esp32.VARIANT_ESP32C6: 96,
+    esp32.VARIANT_ESP32H2: 96,
+    esp32.VARIANT_ESP32P4: 192,
+    esp32.VARIANT_ESP32S2: 192,
+    esp32.VARIANT_ESP32S3: 192,
+}
+
+
+def _default_rmt_symbols(config):
+    if CONF_RMT_SYMBOLS in config:
+        return config
+    variant = esp32.get_esp32_variant()
+    # Variants not in the table (H4, H21, S31) get the conservative small-pool cap
+    cap = _RMT_SYMBOL_CAPS.get(variant, 96)
+    if config.get(CONF_USE_DMA):
+        # With DMA the symbols are a heap buffer, not channel memory blocks,
+        # so a large default costs nothing from the shared RMT pool
+        config[CONF_RMT_SYMBOLS] = cap
+        return config
+    # One memory block per channel is the hardware minimum; only claim more
+    # blocks when the whole strip does not fit in fewer, so short strips
+    # leave blocks free for other RMT users
+    block = 64 if variant in (esp32.VARIANT_ESP32, esp32.VARIANT_ESP32S2) else 48
+    bits_per_led = 32 if (config[CONF_IS_RGBW] or config[CONF_IS_WRGB]) else 24
+    needed = config[CONF_NUM_LEDS] * bits_per_led + 1
+    blocks = (needed + block - 1) // block
+    config[CONF_RMT_SYMBOLS] = min(blocks * block, cap)
+    return config
+
+
 CONFIG_SCHEMA = cv.All(
     esp32.only_on_variant(
         unsupported=list(esp32_rmt.VARIANTS_NO_RMT),
@@ -81,17 +119,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_PIN): pins.internal_gpio_output_pin_schema,
             cv.Required(CONF_NUM_LEDS): cv.positive_not_null_int,
             cv.Required(CONF_RGB_ORDER): cv.enum(RGB_ORDERS, upper=True),
-            cv.SplitDefault(
-                CONF_RMT_SYMBOLS,
-                esp32=192,
-                esp32_c3=96,
-                esp32_c5=96,
-                esp32_c6=96,
-                esp32_h2=96,
-                esp32_p4=192,
-                esp32_s2=192,
-                esp32_s3=192,
-            ): cv.int_range(min=2),
+            cv.Optional(CONF_RMT_SYMBOLS): cv.int_range(min=2),
             cv.Optional(CONF_MAX_REFRESH_RATE): cv.positive_time_period_microseconds,
             cv.Optional(CONF_CHIPSET): cv.one_of(*CHIPSETS, upper=True),
             cv.Optional(CONF_IS_RGBW, default=False): cv.boolean,
@@ -130,6 +158,7 @@ CONFIG_SCHEMA = cv.All(
         }
     ).extend(cv.COMPONENT_SCHEMA),
     cv.has_exactly_one_key(CONF_CHIPSET, CONF_BIT0_HIGH),
+    _default_rmt_symbols,
 )
 
 
