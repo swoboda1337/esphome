@@ -131,6 +131,9 @@ class LD2412Component final : public Component, public uart::UARTDevice {
 #ifdef USE_NUMBER
   std::array<number::Number *, TOTAL_GATES> gate_move_threshold_numbers_{};
   std::array<number::Number *, TOTAL_GATES> gate_still_threshold_numbers_{};
+  // Last values reported by the sensor, used for gates that have no number configured
+  std::array<uint8_t, TOTAL_GATES> gate_move_thresholds_{};
+  std::array<uint8_t, TOTAL_GATES> gate_still_thresholds_{};
 #endif
 #ifdef USE_SENSOR
   std::array<SensorWithDedup<uint8_t>, TOTAL_GATES> gate_move_sensors_{};
