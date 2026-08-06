@@ -635,13 +635,19 @@ static bool topic_match(const char *message, const char *subscription) {
 }
 
 void MQTTClientComponent::on_message(const std::string &topic, const std::string &payload) {
-#ifdef USE_ESP8266
-  // IMPORTANT: This defer is REQUIRED to prevent stack overflow crashes on ESP8266.
+#if defined(USE_ESP8266) || defined(USE_LIBRETINY)
+  // IMPORTANT: This defer is REQUIRED on the AsyncMqttClient backends (ESP8266 and LibreTiny).
+  // The ESP32 backend does not need it because esp-mqtt events are already queued and
+  // dispatched from the main loop.
   //
   // On ESP8266, this callback is invoked directly from the lwIP/AsyncTCP network stack
   // which runs in the "sys" context with a very limited stack (~4KB). By the time we
   // reach this function, the stack is already partially consumed by the network
   // processing chain: tcp_input -> AsyncClient::_recv -> AsyncMqttClient::_onMessage -> here.
+  //
+  // On LibreTiny the same callback arrives on the AsyncTCP task instead, so without the
+  // defer the subscription callbacks below would run entity commands and automations
+  // concurrently with the main loop, on a stack that was not sized for them.
   //
   // MQTT subscription callbacks can trigger arbitrary user actions (automations, HTTP
   // requests, sensor updates, etc.) which may have deep call stacks of their own.
@@ -660,7 +666,7 @@ void MQTTClientComponent::on_message(const std::string &topic, const std::string
       if (topic_match(topic.c_str(), subscription.topic.c_str()))
         subscription.callback(topic, payload);
     }
-#ifdef USE_ESP8266
+#if defined(USE_ESP8266) || defined(USE_LIBRETINY)
   });
 #endif
 }
