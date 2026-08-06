@@ -7,6 +7,8 @@
 #include "esphome/core/automation.h"
 #include "esphome/components/network/ip_address.h"
 
+#include <atomic>
+
 #ifdef USE_ETHERNET
 
 #ifdef USE_ESP32
@@ -223,6 +225,11 @@ class EthernetComponent final : public Component {
 
 #ifdef USE_ETHERNET_IP_STATE_LISTENERS
   void notify_ip_state_listeners_();
+  // Safe to call from the esp_event task: the notification runs from loop()
+  void request_ip_state_notification_() {
+    this->ip_state_pending_.store(true);
+    this->enable_loop_soon_any_context();
+  }
 #endif
 
 #ifdef USE_ESP32
@@ -339,6 +346,9 @@ class EthernetComponent final : public Component {
 
 #ifdef USE_ETHERNET_IP_STATE_LISTENERS
   StaticVector<EthernetIPStateListener *, ESPHOME_ETHERNET_IP_STATE_LISTENERS> ip_state_listeners_;
+  // Set from the esp_event task, consumed in loop(): the listeners publish entity states, which is
+  // not safe to do outside the main loop.
+  std::atomic<bool> ip_state_pending_{false};
 #endif
 
 #ifdef USE_ETHERNET_CONNECT_TRIGGER

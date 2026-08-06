@@ -82,6 +82,12 @@ void EthernetComponent::log_error_and_mark_failed_(esp_err_t err, const char *me
 void EthernetComponent::loop() {
   const uint32_t now = App.get_loop_component_start_time();
 
+#ifdef USE_ETHERNET_IP_STATE_LISTENERS
+  if (this->ip_state_pending_.exchange(false)) {
+    this->notify_ip_state_listeners_();
+  }
+#endif
+
   switch (this->state_) {
     case EthernetComponentState::STOPPED:
       if (this->started_) {
@@ -642,7 +648,7 @@ void EthernetComponent::eth_event_handler(void *arg, esp_event_base_t event_base
       // For static IP configurations, GOT_IP event may not fire, so notify IP listeners here
 #if defined(USE_ETHERNET_IP_STATE_LISTENERS) && defined(USE_ETHERNET_MANUAL_IP)
       if (global_eth_component->manual_ip_.has_value()) {
-        global_eth_component->notify_ip_state_listeners_();
+        global_eth_component->request_ip_state_notification_();
       }
 #endif
       break;
@@ -672,7 +678,7 @@ void EthernetComponent::got_ip_event_handler(void *arg, esp_event_base_t event_b
   global_eth_component->enable_loop_soon_any_context();  // Enable loop when connection state changes
 #endif /* USE_NETWORK_IPV6 */
 #ifdef USE_ETHERNET_IP_STATE_LISTENERS
-  global_eth_component->notify_ip_state_listeners_();
+  global_eth_component->request_ip_state_notification_();
 #endif
 }
 
@@ -691,7 +697,7 @@ void EthernetComponent::got_ip6_event_handler(void *arg, esp_event_base_t event_
   global_eth_component->enable_loop_soon_any_context();  // Enable loop when connection state changes
 #endif
 #ifdef USE_ETHERNET_IP_STATE_LISTENERS
-  global_eth_component->notify_ip_state_listeners_();
+  global_eth_component->request_ip_state_notification_();
 #endif
 }
 #endif /* USE_NETWORK_IPV6 */
