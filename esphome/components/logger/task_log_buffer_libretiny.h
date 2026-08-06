@@ -80,15 +80,21 @@ class TaskLogBuffer {
   static constexpr size_t size() { return ESPHOME_TASK_LOG_BUFFER_SIZE; }
 
  private:
-  // Calculate total size needed for a message (header + text + null terminator)
-  static inline size_t message_total_size(size_t text_length) { return sizeof(LogMessage) + text_length + 1; }
+  // Calculate total size needed for a message (header + text + null terminator), rounded up so the
+  // next header stays aligned: LogMessage starts with a pointer and BK72xx (ARM968E-S) cannot read
+  // unaligned words, so an unaligned header would corrupt the tag pointer.
+  static inline size_t message_total_size(size_t text_length) {
+    constexpr size_t alignment = alignof(LogMessage);
+    return (sizeof(LogMessage) + text_length + 1 + alignment - 1) & ~(alignment - 1);
+  }
 
   // Calculate available contiguous space at write position
   size_t available_contiguous_space_() const;
 
-  uint8_t storage_[ESPHOME_TASK_LOG_BUFFER_SIZE];  // Embedded in Logger (no separate heap allocation)
-  size_t head_{0};                                 // Write position
-  size_t tail_{0};                                 // Read position
+  // Embedded in Logger (no separate heap allocation); aligned so message headers stay aligned
+  alignas(LogMessage) uint8_t storage_[ESPHOME_TASK_LOG_BUFFER_SIZE];
+  size_t head_{0};  // Write position
+  size_t tail_{0};  // Read position
 
   SemaphoreHandle_t mutex_{nullptr};    // FreeRTOS mutex for thread safety
   volatile uint16_t message_count_{0};  // Fast check counter (dirty read OK)
