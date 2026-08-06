@@ -113,9 +113,11 @@ static void spi_set_clock(uint32_t max_hz) {
   ESP_LOGD(TAG, "target frequency: %" PRIu32 ", actual frequency: %d", max_hz, source_clk / 2 / div);
 }
 
+// Runs in the GDMA finish interrupt, so only ISR-safe FreeRTOS calls are allowed here.
+// The waking task is picked up on the next scheduler tick; this port has no portYIELD_FROM_ISR.
 void spi_dma_tx_finish_callback(unsigned int param) {
   spi_data->tx_in_progress = false;
-  xSemaphoreGive(spi_data->dma_tx_semaphore);
+  xSemaphoreGiveFromISR(spi_data->dma_tx_semaphore, nullptr);
   spi_dma_tx_enable(false);
 }
 
