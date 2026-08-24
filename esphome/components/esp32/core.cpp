@@ -18,6 +18,12 @@ namespace esphome {
 // HAL functions live in hal.cpp. This file keeps only the loop task setup.
 TaskHandle_t loop_task_handle = nullptr;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
+#if !CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY
+static StaticTask_t loop_task_tcb;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+static StackType_t
+    loop_task_stack[ESPHOME_LOOP_TASK_STACK_SIZE];  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+#endif
+
 void loop_task(void *pv_params) {
   setup();
   while (true) {
@@ -28,14 +34,24 @@ void loop_task(void *pv_params) {
 extern "C" void app_main() {
   initArduino();
   esp32::setup_preferences();
-  // Let FreeRTOS allocate the TCB and stack: its allocator is fixed to
-  // internal RAM, so a config that places the BSS segment in PSRAM cannot
-  // move them there (static globals would end up in external RAM, and the
-  // very first task creation would assert before the logger exists).
+#if CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY
+  // With the BSS segment in PSRAM, static globals would place the TCB and
+  // stack in external RAM and the first task creation would assert before
+  // the logger exists. Let FreeRTOS allocate them instead: its allocator is
+  // fixed to internal RAM.
 #if CONFIG_FREERTOS_UNICORE
   xTaskCreate(loop_task, "loopTask", ESPHOME_LOOP_TASK_STACK_SIZE, nullptr, 1, &loop_task_handle);
 #else
   xTaskCreatePinnedToCore(loop_task, "loopTask", ESPHOME_LOOP_TASK_STACK_SIZE, nullptr, 1, &loop_task_handle, 1);
+#endif
+#else
+#if CONFIG_FREERTOS_UNICORE
+  loop_task_handle = xTaskCreateStatic(loop_task, "loopTask", ESPHOME_LOOP_TASK_STACK_SIZE, nullptr, 1, loop_task_stack,
+                                       &loop_task_tcb);
+#else
+  loop_task_handle = xTaskCreateStaticPinnedToCore(loop_task, "loopTask", ESPHOME_LOOP_TASK_STACK_SIZE, nullptr, 1,
+                                                   loop_task_stack, &loop_task_tcb, 1);
+#endif
 #endif
 }
 
