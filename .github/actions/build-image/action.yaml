@@ -30,14 +30,19 @@ runs:
           echo $l >> $GITHUB_OUTPUT
         done
 
-    # set cache-to only if dev branch
-    - id: cache-to
+    # Layer cache lives in a per-arch registry tag next to the image
+    # (like docker/build.py's cache-dev tag) instead of the Actions
+    # cache, which counts against the repo's 10GB quota and gets
+    # evicted. Only dev builds write it.
+    - id: cache
       shell: bash
       run: |-
+        ref="ghcr.io/${{ steps.tags.outputs.image_name }}:cache-${{ runner.arch == 'ARM64' && 'arm64' || 'amd64' }}"
+        echo "from=type=registry,ref=${ref}" >> $GITHUB_OUTPUT
         if [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
-          echo "value=type=gha,mode=max" >> $GITHUB_OUTPUT
+          echo "to=type=registry,ref=${ref},mode=max" >> $GITHUB_OUTPUT
         else
-          echo "value=" >> $GITHUB_OUTPUT
+          echo "to=" >> $GITHUB_OUTPUT
         fi
 
     - name: Build and push to ghcr by digest
@@ -50,8 +55,8 @@ runs:
         context: .
         file: ./docker/Dockerfile
         target: ${{ inputs.target }}
-        cache-from: type=gha
-        cache-to: ${{ steps.cache-to.outputs.value }}
+        cache-from: ${{ steps.cache.outputs.from }}
+        cache-to: ${{ steps.cache.outputs.to }}
         build-args: |
           BUILD_TYPE=${{ inputs.build_type }}
           BUILD_VERSION=${{ inputs.version }}
@@ -75,8 +80,9 @@ runs:
         context: .
         file: ./docker/Dockerfile
         target: ${{ inputs.target }}
-        cache-from: type=gha
-        cache-to: ${{ steps.cache-to.outputs.value }}
+        # No cache-to: the ghcr build above just populated the local
+        # layer store, so a second cache export would be redundant.
+        cache-from: ${{ steps.cache.outputs.from }}
         build-args: |
           BUILD_TYPE=${{ inputs.build_type }}
           BUILD_VERSION=${{ inputs.version }}
