@@ -34,7 +34,10 @@ runs:
       if: steps.cache-venv.outputs.cache-hit != 'true'
       uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       with:
-        enable-cache: true
+        # The venv cache is the first-level cache; a wheel cache only
+        # helps on the rare venv miss. Keep it only on Windows/macOS,
+        # where the fallback install is slow.
+        enable-cache: ${{ runner.os != 'Linux' }}
         # Pull request saves land in per-PR scopes nothing else can
         # reuse; dev pushes seed the shared copy instead.
         save-cache: ${{ github.event_name != 'pull_request' }}

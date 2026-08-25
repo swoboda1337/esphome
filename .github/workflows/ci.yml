@@ -51,10 +51,9 @@ jobs:
         if: steps.cache-venv.outputs.cache-hit != 'true'
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          enable-cache: true
-          # Pull request saves land in per-PR scopes nothing else can
-          # reuse; dev pushes seed the shared copy instead.
-          save-cache: ${{ github.event_name != 'pull_request' }}
+          # The venv cache is the first-level cache; a wheel cache only
+          # helps on the rare venv miss and is not worth the quota.
+          enable-cache: false
           # Pin uv version so the action does not have to fetch the
           # manifest from raw.githubusercontent.com on every cache
           # miss; that fetch flakes on Windows runners.
@@ -384,10 +383,9 @@ jobs:
         if: steps.cache-venv.outputs.cache-hit != 'true'
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          enable-cache: true
-          # Pull request saves land in per-PR scopes nothing else can
-          # reuse; dev pushes seed the shared copy instead.
-          save-cache: ${{ github.event_name != 'pull_request' }}
+          # The venv cache is the first-level cache; a wheel cache only
+          # helps on the rare venv miss and is not worth the quota.
+          enable-cache: false
           # Pin uv version so the action does not have to fetch the
           # manifest from raw.githubusercontent.com on every cache
           # miss; that fetch flakes on Windows runners.
