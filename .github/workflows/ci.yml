@@ -34,45 +34,17 @@ jobs:
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Python ${{ env.DEFAULT_PYTHON }}
-        id: python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Restore Python
+        id: restore-python
+        uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-      - name: Restore Python virtual environment
-        id: cache-venv
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: venv
-          # yamllint disable-line rule:line-length
-          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
-      - name: Set up uv
-        # Only needed on cache miss to populate the venv. ``uv pip install``
-        # detects the activated venv via ``VIRTUAL_ENV`` so downstream jobs
-        # that ``. venv/bin/activate`` see an identical layout.
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-          # Pin uv version so the action does not have to fetch the
-          # manifest from raw.githubusercontent.com on every cache
-          # miss; that fetch flakes on Windows runners.
-          version: "0.11.15"
-      - name: Create Python virtual environment
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          python -m venv venv
-          . venv/bin/activate
-          python --version
-          uv pip install -r requirements.txt -r requirements_dev.txt -r requirements_test.txt
-          uv pip install -e .
       - name: Save Python virtual environment
-        if: steps.cache-venv.outputs.cache-hit != 'true'
+        if: steps.restore-python.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: venv
-          # yamllint disable-line rule:line-length
-          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
+          key: ${{ steps.restore-python.outputs.cache-key }}
 
   seed-apt-cache:
     name: Seed apt package cache
@@ -307,12 +279,11 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       - name: Save Python virtual environment cache
-        if: github.ref == 'refs/heads/dev'
+        if: github.ref == 'refs/heads/dev' && steps.restore-python.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: venv
-          # yamllint disable-line rule:line-length
-          key: ${{ runner.os }}-${{ steps.restore-python.outputs.python-version }}-venv-${{ hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
+          key: ${{ steps.restore-python.outputs.cache-key }}
 
   codecov-empty-upload:
     name: Report no coverage to Codecov
@@ -365,49 +336,20 @@ jobs:
         with:
           packages: libsdl2-dev ccache
           version: 1.1
-      - name: Set up Python 3.13
-        id: python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Restore Python
+        id: restore-python
+        uses: ./.github/actions/restore-python
         with:
           python-version: "3.13"
-      - name: Restore Python virtual environment
-        id: cache-venv
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: venv
-          # yamllint disable-line rule:line-length
-          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
-      - name: Set up uv
-        # Only needed on cache miss to populate the venv.
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-          # Pull request saves land in per-PR scopes nothing else can
-          # reuse; dev pushes seed the shared copy instead.
-          save-cache: ${{ github.event_name != 'pull_request' }}
-          # Pin uv version so the action does not have to fetch the
-          # manifest from raw.githubusercontent.com on every cache
-          # miss; that fetch flakes on Windows runners.
-          version: "0.11.15"
-      - name: Create Python virtual environment
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          python -m venv venv
-          . venv/bin/activate
-          python --version
-          uv pip install -r requirements.txt -r requirements_test.txt
-          uv pip install -e .
       - name: Save Python virtual environment
         # Saves from PR and merge-queue runs land in temporary ref
         # scopes nothing else can reuse, and dev (the default branch)
         # is readable from every ref - so only dev seeds the copy.
-        if: github.ref == 'refs/heads/dev' && steps.cache-venv.outputs.cache-hit != 'true'
+        if: github.ref == 'refs/heads/dev' && steps.restore-python.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: venv
-          # yamllint disable-line rule:line-length
-          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
+          key: ${{ steps.restore-python.outputs.cache-key }}
       - name: Register matcher
         run: echo "::add-matcher::.github/workflows/matchers/pytest.json"
       - name: Run integration tests

@@ -15,6 +15,12 @@ outputs:
   python-version:
     description: Python version restored
     value: ${{ steps.python.outputs.python-version }}
+  cache-key:
+    description: Full venv cache key, for jobs that save the venv
+    value: ${{ steps.key.outputs.key }}
+  cache-hit:
+    description: Whether the venv cache was restored
+    value: ${{ steps.cache-venv.outputs.cache-hit }}
 runs:
   using: "composite"
   steps:
@@ -23,13 +29,17 @@ runs:
       uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: ${{ inputs.python-version }}
+    - name: Compute venv cache key
+      id: key
+      shell: bash
+      # yamllint disable-line rule:line-length
+      run: echo "key=${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ inputs.cache-key || hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}" >> $GITHUB_OUTPUT
     - name: Restore Python virtual environment
       id: cache-venv
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: venv
-        # yamllint disable-line rule:line-length
-        key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ inputs.cache-key || hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
+        key: ${{ steps.key.outputs.key }}
     - name: Set up uv
       # Only needed on cache miss to populate the venv. ``uv pip install``
       # detects the activated venv via ``VIRTUAL_ENV`` so the venv layout
