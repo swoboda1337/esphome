@@ -584,7 +584,7 @@ async def _add_platformio_options(pio_options: dict[str, str | list[str]]) -> No
                     "in 2026.12.0."
                 )
                 for flag in vals:
-                    cg.add_build_flag(flag)
+                    CORE.add_user_build_flag(flag)
             elif key == "build_unflags":
                 # Native equivalent: add_build_unflag (honored token-level by
                 # the arduino generator; the IDF generator warns there)
@@ -632,7 +632,7 @@ async def _add_platformio_options(pio_options: dict[str, str | list[str]]) -> No
 @coroutine_with_priority(CoroPriority.FINAL)
 async def _add_build_flags(flags: list[str]) -> None:
     for flag in flags:
-        cg.add_build_flag(flag)
+        CORE.add_user_build_flag(flag)
 
 
 @coroutine_with_priority(CoroPriority.FINAL)

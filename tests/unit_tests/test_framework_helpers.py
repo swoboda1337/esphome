@@ -2182,9 +2182,10 @@ class TestSevenZipExtractAll:
 # ---------------------------------------------------------------------------
 
 
-def _make_core(flags: set[str]):
+def _make_core(flags: set[str], user_flags: set[str] | None = None):
     core = MagicMock()
     core.build_flags = flags
+    core.user_build_flags = user_flags or set()
     return core
 
 
@@ -2217,6 +2218,26 @@ class TestGetProjectCompileFlags:
     def test_empty_build_flags(self) -> None:
         with patch("esphome.core.CORE", _make_core(set())):
             assert get_project_compile_flags() == []
+
+    def test_user_flags_pass_through_unfiltered(self) -> None:
+        flags = {"-mtext-section-literals", "-O2", "-DFOO"}
+        with patch(
+            "esphome.core.CORE",
+            _make_core(flags, user_flags={"-mtext-section-literals", "-O2"}),
+        ):
+            assert get_project_compile_flags() == [
+                "-DFOO",
+                "-O2",
+                "-mtext-section-literals",
+            ]
+
+    def test_user_linker_flags_still_excluded(self) -> None:
+        flags = {"-Wl,--gc-sections", "-DFOO"}
+        with patch(
+            "esphome.core.CORE",
+            _make_core(flags, user_flags={"-Wl,--gc-sections"}),
+        ):
+            assert get_project_compile_flags() == ["-DFOO"]
 
     def test_result_is_sorted(self) -> None:
         with patch(

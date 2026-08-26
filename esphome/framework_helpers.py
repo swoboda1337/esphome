@@ -49,14 +49,20 @@ def get_project_link_flags() -> list[str]:
 
 
 def get_project_compile_flags() -> list[str]:
-    """Return the sorted -D and -W (non-linker) flags from the current build."""
+    """Return the sorted non-linker compile flags from the current build.
+
+    Component-registered flags are limited to -D defines and -W warning
+    flags; flags the user supplied via esphome->build_flags pass through
+    unfiltered (matching the PlatformIO toolchain, where build_flags land
+    in platformio.ini verbatim).
+    """
     from esphome.core import CORE  # local import to avoid circular dependency
 
     return [
         flag
         for flag in sorted(CORE.build_flags)
-        if flag.startswith("-D")
-        or (flag.startswith("-W") and not flag.startswith("-Wl,"))
+        if not flag.startswith("-Wl,")
+        and (flag.startswith(("-D", "-W")) or flag in CORE.user_build_flags)
     ]
 
 

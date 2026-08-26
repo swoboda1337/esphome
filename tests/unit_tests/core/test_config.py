@@ -1294,6 +1294,7 @@ async def test_add_platformio_options_native_idf(
     )
 
     assert "-DSINGLE_FLAG" in CORE.build_flags
+    assert "-DSINGLE_FLAG" in CORE.user_build_flags
     assert "ArduinoJson" in CORE.platformio_libraries
     assert "-Os" in CORE.build_unflags
     # lib_ignore is stored (listified) for generate_idf_components to read;
@@ -1309,6 +1310,17 @@ async def test_add_platformio_options_native_idf(
     )
     assert "lib_deps is deprecated" not in caplog.text
     assert "lib_ignore is deprecated" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_add_build_flags_marked_as_user() -> None:
+    """esphome->build_flags entries are tracked as user flags so the native
+    ESP-IDF generator forwards them without the -D/-W filter."""
+    await config._add_build_flags(["-mtext-section-literals", "-DFOO"])
+
+    assert "-mtext-section-literals" in CORE.build_flags
+    assert "-mtext-section-literals" in CORE.user_build_flags
+    assert "-DFOO" in CORE.user_build_flags
 
 
 @pytest.mark.asyncio

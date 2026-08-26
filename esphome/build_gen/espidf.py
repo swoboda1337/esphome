@@ -95,7 +95,8 @@ def get_project_cmakelists(
     # --format=raw because the legacy mode doesn't support it.
     size_ng_flag = "--ng" if idf_version() < cv.Version(6, 0, 0) else ""
 
-    # Project-wide compile options: -D defines and -W warning flags (skip
+    # Project-wide compile options: -D defines and -W warning flags from
+    # components, plus any flags the user set via esphome->build_flags (skip
     # -Wl, linker flags — those go on the src component via
     # target_link_options below). Emitted via idf_build_set_property so the
     # flags propagate to every IDF component (including managed ones like

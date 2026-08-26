@@ -643,6 +643,9 @@ class EsphomeCore:
         self.platformio_libraries: dict[str, Library] = {}
         # A set of build flags to set in the platformio project
         self.build_flags: set[str] = set()
+        # The subset of build_flags supplied by the user via esphome->build_flags;
+        # these bypass the -D/-W filter on the native ESP-IDF toolchain
+        self.user_build_flags: set[str] = set()
         # A map of CMake args to apply to build systems that use CMake.
         self.cmake_args: dict[str, str] = {}
         # A set of build flags that apply to C++ compiles only (CXXFLAGS /
@@ -708,6 +711,7 @@ class EsphomeCore:
         self.global_statements = []
         self.platformio_libraries = {}
         self.build_flags = set()
+        self.user_build_flags = set()
         self.cmake_args = {}
         self.cxx_build_flags = set()
         self.build_unflags = set()
@@ -1079,6 +1083,10 @@ class EsphomeCore:
         self.build_flags.add(build_flag)
         _LOGGER.debug("Adding build flag: %s", build_flag)
         return build_flag
+
+    def add_user_build_flag(self, build_flag: str) -> str:
+        self.user_build_flags.add(build_flag)
+        return self.add_build_flag(build_flag)
 
     def add_cmake_arg(self, name: str, value: str) -> None:
         """Register a CMake variable for CMake-based toolchains.
