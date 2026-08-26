@@ -21,17 +21,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  common:
-    name: Create common environment
+  seed-venv-cache:
+    name: Seed venv cache
     runs-on: ubuntu-24.04
-    outputs:
-      cache-key: ${{ steps.cache-key.outputs.key }}
+    # Dev (the default branch) caches are readable from every ref, so a
+    # single dev-scoped copy serves all PR runs; saves from PR and
+    # merge-queue runs would land in temporary ref scopes nothing else
+    # can reuse. Nothing depends on this job - every job computes the
+    # cache key itself (see restore-python) and falls back to building
+    # its own venv while the shared copy is missing.
+    if: github.ref == 'refs/heads/dev'
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Generate cache-key
-        id: cache-key
-        run: echo key="${{ hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}" >> $GITHUB_OUTPUT
       - name: Set up Python ${{ env.DEFAULT_PYTHON }}
         id: python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -43,7 +45,7 @@ jobs:
         with:
           path: venv
           # yamllint disable-line rule:line-length
-          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ steps.cache-key.outputs.key }}
+          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
       - name: Set up uv
         # Only needed on cache miss to populate the venv. ``uv pip install``
         # detects the activated venv via ``VIRTUAL_ENV`` so downstream jobs
@@ -52,9 +54,6 @@ jobs:
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
-          # Pull request saves land in per-PR scopes nothing else can
-          # reuse; dev pushes seed the shared copy instead.
-          save-cache: ${{ github.event_name != 'pull_request' }}
           # Pin uv version so the action does not have to fetch the
           # manifest from raw.githubusercontent.com on every cache
           # miss; that fetch flakes on Windows runners.
@@ -68,15 +67,12 @@ jobs:
           uv pip install -r requirements.txt -r requirements_dev.txt -r requirements_test.txt
           uv pip install -e .
       - name: Save Python virtual environment
-        # Saves from PR and merge-queue runs land in temporary ref
-        # scopes nothing else can reuse, and dev (the default branch)
-        # is readable from every ref - so only dev seeds the copy.
-        if: github.ref == 'refs/heads/dev' && steps.cache-venv.outputs.cache-hit != 'true'
+        if: steps.cache-venv.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: venv
           # yamllint disable-line rule:line-length
-          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ steps.cache-key.outputs.key }}
+          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
 
   seed-apt-cache:
     name: Seed apt package cache
@@ -97,8 +93,6 @@ jobs:
   determine-jobs:
     name: Determine which jobs to run
     runs-on: ubuntu-24.04
-    needs:
-      - common
     outputs:
       core-ci: ${{ steps.determine.outputs.core-ci }}
       integration-tests: ${{ steps.determine.outputs.integration-tests }}
@@ -138,7 +132,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
       - name: Restore components graph cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -193,7 +186,6 @@ jobs:
     name: Run script/ci-custom
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: needs.determine-jobs.outputs.core-ci == 'true'
     steps:
@@ -203,7 +195,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
       - name: Register matcher
         run: echo "::add-matcher::.github/workflows/matchers/ci-custom.json"
       - name: Run script/ci-custom
@@ -222,7 +213,6 @@ jobs:
     name: Check pylint
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: needs.determine-jobs.outputs.python-linters == 'true'
     steps:
@@ -232,7 +222,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
       - name: Run pylint
         run: |
           . venv/bin/activate
@@ -293,7 +282,6 @@ jobs:
             os: macOS-latest
     runs-on: ${{ matrix.os }}
     needs:
-      - common
       - determine-jobs
     if: needs.determine-jobs.outputs.core-ci == 'true'
     steps:
@@ -304,7 +292,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ matrix.python-version }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
       - name: Register matcher
         run: echo "::add-matcher::.github/workflows/matchers/pytest.json"
       - name: Run pytest
@@ -324,7 +311,8 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: venv
-          key: ${{ runner.os }}-${{ steps.restore-python.outputs.python-version }}-venv-${{ needs.common.outputs.cache-key }}
+          # yamllint disable-line rule:line-length
+          key: ${{ runner.os }}-${{ steps.restore-python.outputs.python-version }}-venv-${{ hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
 
   codecov-empty-upload:
     name: Report no coverage to Codecov
@@ -358,7 +346,6 @@ jobs:
     # Must match seed-apt-cache's image: the apt cache key has no OS in it.
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: needs.determine-jobs.outputs.integration-tests == 'true'
     strategy:
@@ -388,7 +375,8 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: venv
-          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ needs.common.outputs.cache-key }}
+          # yamllint disable-line rule:line-length
+          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
       - name: Set up uv
         # Only needed on cache miss to populate the venv.
         if: steps.cache-venv.outputs.cache-hit != 'true'
@@ -419,7 +407,7 @@ jobs:
         with:
           path: venv
           # yamllint disable-line rule:line-length
-          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ needs.common.outputs.cache-key }}
+          key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
       - name: Register matcher
         run: echo "::add-matcher::.github/workflows/matchers/pytest.json"
       - name: Run integration tests
@@ -441,7 +429,6 @@ jobs:
     name: Check import esphome.__main__ time
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: needs.determine-jobs.outputs.import-time == 'true'
     steps:
@@ -451,7 +438,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
       - name: Check import time against budget and write waterfall HAR
         run: |
           . venv/bin/activate
@@ -470,7 +456,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs:
-      - common
       - determine-jobs
     if: >-
       github.repository == 'esphome/esphome' && (
@@ -498,7 +483,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
 
       - name: Build benchmarks
         id: build
@@ -568,7 +552,6 @@ jobs:
     name: Run C++ unit tests
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: github.event_name == 'pull_request' && (needs.determine-jobs.outputs.cpp-unit-tests-run-all == 'true' || needs.determine-jobs.outputs.cpp-unit-tests-components != '[]')
     steps:
@@ -579,7 +562,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
 
       - name: Run cpp_unit_test.py
         run: |
@@ -595,7 +577,6 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: needs.determine-jobs.outputs.clang-tidy == 'true'
     env:
@@ -643,7 +624,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
 
       # Key on the exact Python version as well: LibreTiny creates a venv under
       # ~/.platformio/penv whose interpreter is a symlink into the runner's
@@ -727,7 +707,6 @@ jobs:
     name: Run script/clang-tidy for ESP32 IDF
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: needs.determine-jobs.outputs.clang-tidy-mode == 'nosplit'
     env:
@@ -745,7 +724,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
 
       - name: Cache ESP-IDF install
         uses: ./.github/actions/cache-esp-idf
@@ -792,7 +770,6 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: needs.determine-jobs.outputs.clang-tidy-mode == 'split'
     env:
@@ -824,7 +801,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
 
       - name: Cache ESP-IDF install
         uses: ./.github/actions/cache-esp-idf
@@ -871,7 +847,6 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: needs.determine-jobs.outputs.clang-tidy == 'true'
     env:
@@ -908,7 +883,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
 
       - name: Cache ESP-IDF install
         uses: ./.github/actions/cache-esp-idf
@@ -954,7 +928,6 @@ jobs:
     name: Test components batch (${{ matrix.batch.components }})
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: github.event_name == 'pull_request' && fromJSON(needs.determine-jobs.outputs.component-test-count) > 0
     env:
@@ -996,7 +969,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
       - name: Cache ESP-IDF install (restore-only)
         # Only batches whose test platforms include esp32 need the native
         # ESP-IDF install; never save -- just reuse the shared install the
@@ -1125,7 +1097,6 @@ jobs:
     name: Test esp32 components with PlatformIO
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: github.event_name == 'pull_request' && needs.determine-jobs.outputs.esp32-platformio == 'true'
     env:
@@ -1142,7 +1113,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
 
       - name: Run PlatformIO compile test
         run: |
@@ -1166,7 +1136,6 @@ jobs:
     name: Test downstream esphome/device-builder
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: needs.determine-jobs.outputs.device-builder == 'true'
     steps:
@@ -1223,7 +1192,6 @@ jobs:
     name: Build target branch for memory impact
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: github.event_name == 'pull_request' && fromJSON(needs.determine-jobs.outputs.memory_impact).should_run == 'true'
     outputs:
@@ -1329,7 +1297,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
 
       - name: Cache platformio
         if: steps.check-script.outputs.skip != 'true' && steps.check-tests.outputs.skip != 'true' && steps.cache-memory-analysis.outputs.cache-hit != 'true'
@@ -1407,7 +1374,6 @@ jobs:
     name: Build PR branch for memory impact
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
     if: github.event_name == 'pull_request' && fromJSON(needs.determine-jobs.outputs.memory_impact).should_run == 'true'
     outputs:
@@ -1420,7 +1386,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
       - name: Cache platformio
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -1472,7 +1437,6 @@ jobs:
     name: Comment memory impact
     runs-on: ubuntu-24.04
     needs:
-      - common
       - determine-jobs
       - memory-impact-target-branch
       - memory-impact-pr-branch
@@ -1489,7 +1453,6 @@ jobs:
         uses: ./.github/actions/restore-python
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache-key: ${{ needs.common.outputs.cache-key }}
       - name: Download target analysis JSON
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -1522,7 +1485,7 @@ jobs:
     # deliberately left out: "benchmarks" reports through CodSpeed rather than
     # this check.
     needs:
-      - common
+      - seed-venv-cache
       - seed-apt-cache
       - determine-jobs
       - ci-custom

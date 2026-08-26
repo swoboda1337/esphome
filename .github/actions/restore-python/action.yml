@@ -5,8 +5,11 @@ inputs:
     required: true
     type: string
   cache-key:
-    description: Cache key to use
-    required: true
+    description: >-
+      Cache key to use; defaults to the hash of the requirements files
+      and .pre-commit-config.yaml
+    required: false
+    default: ""
     type: string
 outputs:
   python-version:
@@ -26,7 +29,7 @@ runs:
       with:
         path: venv
         # yamllint disable-line rule:line-length
-        key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ inputs.cache-key }}
+        key: ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{ inputs.cache-key || hashFiles('requirements.txt', 'requirements_dev.txt', 'requirements_test.txt', '.pre-commit-config.yaml') }}
     - name: Set up uv
       # Only needed on cache miss to populate the venv. ``uv pip install``
       # detects the activated venv via ``VIRTUAL_ENV`` so the venv layout
