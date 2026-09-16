@@ -10,7 +10,9 @@ from esphome.const import (
     CONF_RX_BUFFER_SIZE,
     CONF_UART_ID,
 )
+from esphome.core import CORE
 import esphome.final_validate as fv
+from esphome.helpers import IS_MACOS
 from esphome.types import ConfigType
 
 _LOGGER = logging.getLogger(__name__)
@@ -86,6 +88,12 @@ async def to_code(config: ConfigType) -> None:
     cg.add_build_flag("-DDSMR_THERMAL_MBUS_ID=" + str(config[CONF_THERMAL_MBUS_ID]))
 
     cg.add_library("esphome/dsmr_parser", "1.9.0")
+
+    if CORE.is_host:
+        if IS_MACOS:
+            cg.add_build_flag("-I/opt/homebrew/opt/openssl/include")
+            cg.add_build_flag("-L/opt/homebrew/opt/openssl/lib")
+        cg.add_build_flag("-lcrypto")
 
 
 def final_validate(config: ConfigType) -> None:

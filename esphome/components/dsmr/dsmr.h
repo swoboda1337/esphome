@@ -21,7 +21,10 @@
 // esp_mbedtls_esp8266, but that build leaves MBEDTLS_GCM_C disabled so the
 // gcm.h symbols are unresolved at link time. Force BearSSL on ESP8266 to
 // avoid that linker error.
-#if __has_include(<psa/crypto.h>)
+// The host platform has no bundled crypto library; use the system OpenSSL.
+#ifdef USE_HOST
+#include "aes128gcm_openssl.h"
+#elif __has_include(<psa/crypto.h>)
 #include <dsmr_parser/decryption/aes128gcm_tfpsa.h>
 #elif !defined(USE_ESP8266) && __has_include(<mbedtls/gcm.h>)
 #if __has_include(<mbedtls/esp_config.h>)
@@ -36,7 +39,9 @@
 
 namespace esphome::dsmr {
 
-#if __has_include(<psa/crypto.h>)
+#ifdef USE_HOST
+using Aes128GcmDecryptorImpl = Aes128GcmOpenSsl;
+#elif __has_include(<psa/crypto.h>)
 using Aes128GcmDecryptorImpl = dsmr_parser::Aes128GcmTfPsa;
 #elif !defined(USE_ESP8266) && __has_include(<mbedtls/gcm.h>)
 using Aes128GcmDecryptorImpl = dsmr_parser::Aes128GcmMbedTls;

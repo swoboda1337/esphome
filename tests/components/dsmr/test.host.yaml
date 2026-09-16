@@ -1,0 +1,25 @@
+uart:
+  - id: uart_dsmr
+    port: "/dev/ttyS0"
+    baud_rate: 115200
+    rx_buffer_size: 1700
+
+dsmr:
+  id: dsmr_instance
+  uart_id: uart_dsmr
+  decryption_key: 00112233445566778899aabbccddeeff
+  max_telegram_length: 1000
+
+sensor:
+  - platform: dsmr
+    energy_delivered_lux:
+      name: "Energy Consumed Luxembourg. OBIS: 1-0:1.8.0"
+    energy_delivered_tariff1:
+      name: "Energy Consumed Tariff 1. OBIS: 1-0:1.8.1"
+
+text_sensor:
+  - platform: dsmr
+    identification:
+      name: "DSMR Identification"
+    telegram:
+      name: "Raw DSMR Telegram"
