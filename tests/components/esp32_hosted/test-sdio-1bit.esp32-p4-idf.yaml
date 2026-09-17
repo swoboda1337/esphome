@@ -8,6 +8,4 @@ esp32_hosted:
   clk_pin: GPIO12
   d0_pin: GPIO11
 
-wifi:
-  ssid: MySSID
-  password: password1
+# No wifi/espnow/BLE: the P4 ESP-NOW shim must pull in esp_wifi on its own.
