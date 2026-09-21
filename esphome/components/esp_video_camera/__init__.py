@@ -1,8 +1,11 @@
-"""ESP-Video camera platform for ESPHome (ESP32-P4).
+"""ESP-Video camera platform for ESPHome (ESP32-P4 and ESP32-S31).
 
 Publishes the Espressif esp_video (V4L2) stream to Home Assistant as a native
-``camera`` entity. Works with any auto-detected MIPI-CSI sensor through the
-hardware JPEG encoder, and with USB-UVC cameras.
+``camera`` entity. On the ESP32-P4 it works with any auto-detected MIPI-CSI
+sensor through the hardware JPEG encoder, and with USB-UVC cameras. On the
+ESP32-S31 the sensor is on the DVP (parallel) interface instead; a sensor that
+outputs JPEG itself is streamed as-is, anything else goes through the hardware
+JPEG encoder.
 
 All Espressif sources are pulled through the IDF component manager (managed
 components) — nothing is vendored.
@@ -16,21 +19,26 @@ import esphome.codegen as cg
 from esphome.components import i2c, network
 from esphome.components.esp32 import (
     VARIANT_ESP32P4,
+    VARIANT_ESP32S31,
     add_extra_build_file,
     add_idf_component,
     add_idf_sdkconfig_option,
+    get_esp32_variant,
     only_on_variant,
 )
 from esphome.components.psram import DOMAIN as PSRAM_DOMAIN
 from esphome.components.usb_host import DOMAIN as USB_HOST_DOMAIN
 import esphome.config_validation as cv
 from esphome.const import (
+    CONF_DATA_PINS,
     CONF_DEVICE,
     CONF_FRAMEWORK,
     CONF_I2C_ID,
     CONF_ID,
     CONF_LOG_LEVEL,
+    CONF_RESET_PIN,
     CONF_RESOLUTION,
+    CONF_VSYNC_PIN,
     PLATFORM_ESP32,
 )
 from esphome.core import CORE
@@ -58,6 +66,9 @@ CONF_XCLK_FREQUENCY = "xclk_frequency"
 CONF_ENABLE_XCLK = "enable_xclk"
 CONF_ENABLE_UVC = "enable_uvc"
 CONF_USB_PERIPHERAL_MAP = "usb_peripheral_map"
+CONF_HREF_PIN = "href_pin"
+CONF_PIXEL_CLOCK_PIN = "pixel_clock_pin"
+CONF_POWER_DOWN_PIN = "power_down_pin"
 
 # Output formats each supported sensor ships in esp_cam_sensor 2.3.0.
 #
@@ -88,9 +99,50 @@ _SENSOR_FORMATS = {
     },
 }
 
+# DVP sensors, for the ESP32-S31. There is no ISP on that chip, so what the
+# sensor puts out is what gets encoded: only formats the hardware JPEG encoder
+# takes as-is (YUV422 UYVY) or that need no encoding at all (JPEG) are listed.
+# The RGB565 modes these sensors also have come out big-endian on DVP, which the
+# encoder does not accept, and esp_video only byte-swaps on the P4.
+_DVP_SENSOR_FORMATS = {
+    "ov3660": {
+        (320, 240): "JPEG_320X240_25FPS",
+        (640, 480): "JPEG_640X480_25FPS",
+        (1280, 720): "JPEG_1280X720_12FPS",
+    },
+    "ov2640": {
+        (320, 240): "JPEG_320X240_50FPS",
+        (640, 480): "JPEG_640X480_25FPS",
+        (1280, 720): "JPEG_1280X720_12FPS",
+        (1600, 1200): "JPEG_1600X1200_12FPS",
+    },
+    "sc101iot": {
+        (640, 480): "YUV422_640X480_15FPS",
+        (1280, 720): "YUV422_1280X720_15FPS",
+    },
+    "gc0308": {
+        (320, 240): "YUV422_320X240_20FPS",
+        (640, 480): "YUV422_640X480_16FPS",
+    },
+}
+
 # The SC2356 module (M5Stack Tab5, reTerminal) is SC202CS silicon behind a
 # different part number, and is driven by the SC202CS driver.
 _SENSOR_ALIASES = {"sc2356": "sc202cs"}
+
+
+def _is_dvp() -> bool:
+    """True when the sensor interface is DVP (ESP32-S31) rather than MIPI-CSI."""
+    return get_esp32_variant() == VARIANT_ESP32S31
+
+
+def _interface_name() -> str:
+    return "DVP" if _is_dvp() else "MIPI-CSI"
+
+
+def _sensor_formats() -> dict:
+    return _DVP_SENSOR_FORMATS if _is_dvp() else _SENSOR_FORMATS
+
 
 # Convenience names. They are only accepted when the chosen sensor actually has
 # that size -- none of these sensors does QVGA, for instance.
@@ -106,10 +158,11 @@ _RESOLUTION_ALIASES = {
 def _validate_sensor_model(value):
     value = cv.string(value).lower()
     value = _SENSOR_ALIASES.get(value, value)
-    if value not in _SENSOR_FORMATS:
+    formats = _sensor_formats()
+    if value not in formats:
         raise cv.Invalid(
-            f"sensor_model '{value}' is not one of the MIPI-CSI sensors this component "
-            f"compiles in: {', '.join(sorted(_SENSOR_FORMATS))} "
+            f"sensor_model '{value}' is not one of the {_interface_name()} sensors "
+            f"this component compiles in: {', '.join(sorted(formats))} "
             f"(aliases: {', '.join(sorted(_SENSOR_ALIASES))})."
         )
     return value
@@ -154,6 +207,11 @@ def _is_uvc(device):
     return device.startswith(("uvc", "/dev/video4"))
 
 
+def _dvp_pin(value):
+    """A DVP data or sync input. Accepts both 46 and GPIO46."""
+    return pins.internal_gpio_input_pin_number(value)
+
+
 def _xclk_pin(value):
     """A GPIO number for the sensor XCLK, or -1 / NO_CLOCK for boards that
     already drive it (an on-board oscillator, or a BSP that started it)."""
@@ -166,11 +224,49 @@ def _xclk_pin(value):
 
 
 def _validate_xclk(config):
+    if CONF_XCLK_FREQUENCY not in config:
+        # DVP sensor drivers are all tabled for a 20 MHz input; the MIPI ones
+        # for 24 MHz.
+        config[CONF_XCLK_FREQUENCY] = 20000000 if _is_dvp() else 24000000
+    if _is_dvp() and config[CONF_ENABLE_XCLK]:
+        raise cv.Invalid(
+            "enable_xclk: is for MIPI-CSI boards. On the DVP interface the camera "
+            "driver generates the sensor clock itself on xclk_pin:, so just set "
+            "that (or leave it out for a board with its own oscillator).",
+            path=[CONF_ENABLE_XCLK],
+        )
     if config[CONF_ENABLE_XCLK] and config.get(CONF_XCLK_PIN, -1) == -1:
         raise cv.Invalid(
             "enable_xclk: true needs an xclk_pin: to generate the clock on.",
             path=[CONF_XCLK_PIN],
         )
+    return config
+
+
+_DVP_REQUIRED = (CONF_DATA_PINS, CONF_VSYNC_PIN, CONF_HREF_PIN, CONF_PIXEL_CLOCK_PIN)
+_DVP_ONLY = _DVP_REQUIRED + (CONF_RESET_PIN, CONF_POWER_DOWN_PIN)
+
+
+def _validate_interface_pins(config):
+    """The DVP interface is wired pin by pin; MIPI-CSI is not."""
+    if _is_uvc(config[CONF_DEVICE]):
+        return config
+    if _is_dvp():
+        for key in _DVP_REQUIRED:
+            if key not in config:
+                raise cv.Invalid(
+                    f"{key}: is required on the ESP32-S31: the sensor is on the "
+                    "parallel DVP interface, which has to be wired pin by pin.",
+                    path=[key],
+                )
+        return config
+    for key in _DVP_ONLY:
+        if key in config:
+            raise cv.Invalid(
+                f"{key}: is for the DVP interface (ESP32-S31). A MIPI-CSI sensor "
+                "on the ESP32-P4 has no such pin.",
+                path=[key],
+            )
     return config
 
 
@@ -215,7 +311,7 @@ def _sensor_format_symbol(config):
     if resolution == "auto" or _is_uvc(config[CONF_DEVICE]):
         return None
     width, height = (int(part) for part in resolution.split("x"))
-    return _SENSOR_FORMATS[config[CONF_SENSOR_MODEL]][width, height]
+    return _sensor_formats()[config[CONF_SENSOR_MODEL]][width, height]
 
 
 def _validate_resolution_for_sensor(config):
@@ -225,15 +321,15 @@ def _validate_resolution_for_sensor(config):
 
     if (model := config.get(CONF_SENSOR_MODEL)) is None:
         raise cv.Invalid(
-            "resolution: needs sensor_model: to go with it. A MIPI-CSI sensor's "
-            "resolution is fixed when the firmware is built, so the sensor has to be "
-            "named for the right format to be compiled in. Use resolution: auto to "
-            "take whatever the detected sensor comes up in.",
+            f"resolution: needs sensor_model: to go with it. A {_interface_name()} "
+            "sensor's resolution is fixed when the firmware is built, so the sensor "
+            "has to be named for the right format to be compiled in. Use "
+            "resolution: auto to take whatever the detected sensor comes up in.",
             path=[CONF_RESOLUTION],
         )
 
     width, height = (int(part) for part in resolution.split("x"))
-    formats = _SENSOR_FORMATS[model]
+    formats = _sensor_formats()[model]
     if (width, height) not in formats:
         supported = ", ".join(f"{w}x{h}" for w, h in sorted(formats))
         raise cv.Invalid(
@@ -304,10 +400,17 @@ CONFIG_SCHEMA = cv.All(
             # and defaulting to a pin means every one of those configs is told
             # off for naming a strapping pin it never touches.
             cv.Optional(CONF_XCLK_PIN): _xclk_pin,
-            cv.Optional(CONF_XCLK_FREQUENCY, default=24000000): cv.int_range(
-                min=1000000, max=40000000
-            ),
+            # No default here: 24 MHz for MIPI-CSI, 20 MHz for DVP, filled in
+            # by _validate_xclk once the interface is known.
+            cv.Optional(CONF_XCLK_FREQUENCY): cv.int_range(min=1000000, max=40000000),
             cv.Optional(CONF_ENABLE_XCLK, default=False): cv.boolean,
+            # DVP interface (ESP32-S31) only; see _validate_interface_pins.
+            cv.Optional(CONF_DATA_PINS): cv.All([_dvp_pin], cv.Length(min=8, max=8)),
+            cv.Optional(CONF_VSYNC_PIN): _dvp_pin,
+            cv.Optional(CONF_HREF_PIN): _dvp_pin,
+            cv.Optional(CONF_PIXEL_CLOCK_PIN): _dvp_pin,
+            cv.Optional(CONF_RESET_PIN): pins.internal_gpio_output_pin_number,
+            cv.Optional(CONF_POWER_DOWN_PIN): pins.internal_gpio_output_pin_number,
             cv.Optional(CONF_ENABLE_UVC, default=False): cv.boolean,
             # The ESP32-P4 has two USB controllers, and a board wires its host
             # connector to one of them. 0 is the target default -- the
@@ -320,11 +423,13 @@ CONFIG_SCHEMA = cv.All(
     )
     .extend(cv.ENTITY_BASE_SCHEMA)
     .extend(cv.COMPONENT_SCHEMA),
-    # Platform first. The camera pipeline (MIPI-CSI, ISP, hardware JPEG) is
-    # ESP32-P4 silicon and esp_video 2.3.0 needs ESP-IDF 5.4, so on anything
-    # else every later check is beside the point -- being told to add PSRAM is
-    # a poor way to learn the chip is wrong.
-    only_on_variant(supported=[VARIANT_ESP32P4], msg_prefix="esp_video_camera"),
+    # Platform first. The camera pipeline (MIPI-CSI or DVP into the hardware
+    # JPEG encoder) exists on the ESP32-P4 and ESP32-S31 and esp_video 2.3.0
+    # needs ESP-IDF 5.4, so on anything else every later check is beside the
+    # point -- being told to add PSRAM is a poor way to learn the chip is wrong.
+    only_on_variant(
+        supported=[VARIANT_ESP32P4, VARIANT_ESP32S31], msg_prefix="esp_video_camera"
+    ),
     cv.require_framework_version(
         esp_idf=cv.Version(5, 4, 0),
         extra_message="esp_video_camera requires the esp-idf framework.",
@@ -336,6 +441,7 @@ CONFIG_SCHEMA = cv.All(
     _validate_uvc_device,
     _validate_i2c_bus,
     _validate_xclk,
+    _validate_interface_pins,
     _validate_resolution_for_sensor,
     # Last, because unlike the others it changes state outside this component:
     # a configuration that is going to be rejected must not have moved the
@@ -400,6 +506,19 @@ async def to_code(config):
     cg.add(var.set_enable_uvc(config[CONF_ENABLE_UVC]))
     cg.add(var.set_usb_peripheral_map(config[CONF_USB_PERIPHERAL_MAP]))
 
+    if (data_pins := config.get(CONF_DATA_PINS)) is not None:
+        for index, pin in enumerate(data_pins):
+            cg.add(var.set_data_pin(index, pin))
+    for key, setter in (
+        (CONF_VSYNC_PIN, var.set_vsync_pin),
+        (CONF_HREF_PIN, var.set_href_pin),
+        (CONF_PIXEL_CLOCK_PIN, var.set_pixel_clock_pin),
+        (CONF_RESET_PIN, var.set_reset_pin),
+        (CONF_POWER_DOWN_PIN, var.set_power_down_pin),
+    ):
+        if (pin := config.get(key)) is not None:
+            cg.add(setter(pin))
+
     cg.add(var.set_device(config[CONF_DEVICE]))
     cg.add(var.set_resolution(config[CONF_RESOLUTION]))
     cg.add(var.set_jpeg_quality(config[CONF_JPEG_QUALITY]))
@@ -412,17 +531,31 @@ async def to_code(config):
         # USB-UVC host driver, aligned with esp_video 2.3.0's own dependency.
         add_idf_component(name="espressif/usb_host_uvc", ref="2.5.*")
 
-    # ENABLE_ISP_PIPELINE_CONTROLLER pulls in esp_ipa and runs the AWB/AE/CCM/gamma
-    # automation; without it the image is unprocessed.
-    for opt in (
-        "CONFIG_ESP_VIDEO_ENABLE_MIPI_CSI_VIDEO_DEVICE",
-        "CONFIG_ESP_VIDEO_ENABLE_ISP",
-        "CONFIG_ESP_VIDEO_ENABLE_ISP_VIDEO_DEVICE",
-        "CONFIG_ESP_VIDEO_ENABLE_ISP_PIPELINE_CONTROLLER",
+    dvp = _is_dvp()
+    interface = "DVP" if dvp else "MIPI"
+    if dvp:
+        # No ISP on the ESP32-S31: the DVP controller writes the sensor's own
+        # output straight into the capture buffer.
+        video_devices = ("CONFIG_ESP_VIDEO_ENABLE_DVP_VIDEO_DEVICE",)
+    else:
+        # ENABLE_ISP_PIPELINE_CONTROLLER pulls in esp_ipa and runs the
+        # AWB/AE/CCM/gamma automation; without it the image is unprocessed.
+        video_devices = (
+            "CONFIG_ESP_VIDEO_ENABLE_MIPI_CSI_VIDEO_DEVICE",
+            "CONFIG_ESP_VIDEO_ENABLE_ISP",
+            "CONFIG_ESP_VIDEO_ENABLE_ISP_VIDEO_DEVICE",
+            "CONFIG_ESP_VIDEO_ENABLE_ISP_PIPELINE_CONTROLLER",
+        )
+    for opt in video_devices + (
         "CONFIG_ESP_VIDEO_ENABLE_JPEG_ENC_VIDEO_DEVICE",
         "CONFIG_ESP_VIDEO_ENABLE_HW_JPEG_ENC_VIDEO_DEVICE",
     ):
         add_idf_sdkconfig_option(opt, True)
+    # esp_video turns the DVP device on by default wherever the chip has the
+    # port, the P4 included. It is unused there, and its driver is only built
+    # against the IDF this component pins for the S31.
+    if not dvp:
+        add_idf_sdkconfig_option("CONFIG_ESP_VIDEO_ENABLE_DVP_VIDEO_DEVICE", False)
     if config[CONF_ENABLE_UVC]:
         add_idf_sdkconfig_option("CONFIG_ESP_VIDEO_ENABLE_USB_UVC_VIDEO_DEVICE", True)
         # 2048: a UVC configuration descriptor overruns the 256-byte default and
@@ -445,18 +578,21 @@ async def to_code(config):
 
     # Every driver goes in whatever sensor_model says, so a board that turns out
     # to carry a different sensor still comes up.
-    for sensor in _SENSOR_FORMATS:
+    for sensor in _sensor_formats():
         add_idf_sdkconfig_option(f"CONFIG_CAMERA_{sensor.upper()}", True)
         add_idf_sdkconfig_option(
-            f"CONFIG_CAMERA_{sensor.upper()}_AUTO_DETECT_MIPI_INTERFACE_SENSOR", True
+            f"CONFIG_CAMERA_{sensor.upper()}_AUTO_DETECT_{interface}_INTERFACE_SENSOR",
+            True,
         )
 
     # A format is only choosable as the boot default once its own
-    # CAMERA_<SENSOR>_MIPI_* symbol has put it in the driver's format table.
+    # CAMERA_<SENSOR>_<INTERFACE>_* symbol has put it in the driver's format table.
     if (fmt := _sensor_format_symbol(config)) is not None:
         sensor = config[CONF_SENSOR_MODEL].upper()
-        add_idf_sdkconfig_option(f"CONFIG_CAMERA_{sensor}_MIPI_{fmt}", True)
-        add_idf_sdkconfig_option(f"CONFIG_CAMERA_{sensor}_MIPI_DEFAULT_FMT_{fmt}", True)
+        add_idf_sdkconfig_option(f"CONFIG_CAMERA_{sensor}_{interface}_{fmt}", True)
+        add_idf_sdkconfig_option(
+            f"CONFIG_CAMERA_{sensor}_{interface}_DEFAULT_FMT_{fmt}", True
+        )
 
     # Colour tuning for the SC202CS, which the SC2356 module (M5Stack Tab5,
     # reTerminal) is the same silicon as. The image processing algorithms read

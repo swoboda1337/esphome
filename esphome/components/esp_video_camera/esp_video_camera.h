@@ -2,9 +2,10 @@
 
 #include "esphome/core/defines.h"
 
-// This component is ESP32-P4 silicon (MIPI-CSI, ISP, hardware JPEG) and builds
-// only against esp_video's V4L2 headers, so it compiles on that variant alone.
-#if defined(USE_ESP_IDF) && defined(USE_ESP32_VARIANT_ESP32P4)
+// This component is ESP32-P4 (MIPI-CSI, ISP, hardware JPEG) and ESP32-S31 (DVP,
+// hardware JPEG) silicon and builds only against esp_video's V4L2 headers, so
+// it compiles on those variants alone.
+#if defined(USE_ESP_IDF) && (defined(USE_ESP32_VARIANT_ESP32P4) || defined(USE_ESP32_VARIANT_ESP32S31))
 
 #include "esphome/core/component.h"
 #include "esphome/components/camera/camera.h"
@@ -61,8 +62,9 @@ class ESPVideoCameraImageReader : public camera::CameraImageReader {
 
 /// Home Assistant camera backed by Espressif's esp_video (V4L2) pipeline. It
 /// captures JPEG frames from either the hardware JPEG encoder fed by an
-/// auto-detected MIPI-CSI sensor ("jpeg"), a USB-UVC camera ("uvc"), or an
-/// explicit /dev/videoN path.
+/// auto-detected MIPI-CSI or DVP sensor ("jpeg"), a USB-UVC camera ("uvc"), or
+/// an explicit /dev/videoN path. A DVP sensor that already outputs JPEG is
+/// streamed as-is.
 class ESPVideoCamera : public camera::Camera {
  public:
   void setup() override;
@@ -78,6 +80,14 @@ class ESPVideoCamera : public camera::Camera {
   void set_enable_xclk_init(bool enable) { this->enable_xclk_init_ = enable; }
   void set_enable_uvc(bool enable) { this->enable_uvc_ = enable; }
   void set_usb_peripheral_map(unsigned map) { this->usb_peripheral_map_ = map; }
+  // DVP interface (ESP32-S31) wiring. Plain ints: code generation emits the
+  // GPIO number, not the enumerator.
+  void set_data_pin(int index, int pin) { this->dvp_data_pins_[index] = static_cast<gpio_num_t>(pin); }
+  void set_vsync_pin(int pin) { this->dvp_vsync_pin_ = static_cast<gpio_num_t>(pin); }
+  void set_href_pin(int pin) { this->dvp_href_pin_ = static_cast<gpio_num_t>(pin); }
+  void set_pixel_clock_pin(int pin) { this->dvp_pclk_pin_ = static_cast<gpio_num_t>(pin); }
+  void set_reset_pin(int pin) { this->sensor_reset_pin_ = static_cast<gpio_num_t>(pin); }
+  void set_power_down_pin(int pin) { this->sensor_pwdn_pin_ = static_cast<gpio_num_t>(pin); }
 
   // Camera platform configuration ----------------------------------------------
   void set_device(const std::string &device) { this->device_ = device; }
@@ -140,6 +150,14 @@ class ESPVideoCamera : public camera::Camera {
   gpio_num_t xclk_pin_{GPIO_NUM_36};
   uint32_t xclk_freq_{24000000};
   bool enable_xclk_init_{false};
+  // DVP only. -1 (GPIO_NUM_NC) where the board has no such line.
+  gpio_num_t dvp_data_pins_[8]{GPIO_NUM_NC, GPIO_NUM_NC, GPIO_NUM_NC, GPIO_NUM_NC,
+                               GPIO_NUM_NC, GPIO_NUM_NC, GPIO_NUM_NC, GPIO_NUM_NC};
+  gpio_num_t dvp_vsync_pin_{GPIO_NUM_NC};
+  gpio_num_t dvp_href_pin_{GPIO_NUM_NC};
+  gpio_num_t dvp_pclk_pin_{GPIO_NUM_NC};
+  gpio_num_t sensor_reset_pin_{GPIO_NUM_NC};
+  gpio_num_t sensor_pwdn_pin_{GPIO_NUM_NC};
   bool enable_uvc_{false};
   // Which of the ESP32-P4's two USB controllers the host port hangs off. Zero
   // is the target's default (the High-Speed one), which is right for most
@@ -208,15 +226,18 @@ class ESPVideoCamera : public camera::Camera {
   std::atomic<uint8_t> stream_requesters_{0};
   std::atomic<uint8_t> single_requesters_{0};
 
-  // V4L2 state. A direct source (USB-UVC, or a /dev/videoN already producing
-  // JPEG) uses capture_fd_ + capture_buffers_ only. The hardware-JPEG source
-  // spans two devices: capture_fd_ is the MIPI-CSI/ISP device producing RGB565,
-  // jpeg_fd_ the M2M encoder fed from it and read back as JPEG.
+  // V4L2 state. A direct source (USB-UVC, a DVP sensor that outputs JPEG, or a
+  // /dev/videoN already producing JPEG) uses capture_fd_ + capture_buffers_
+  // only. The hardware-JPEG source spans two devices: capture_fd_ is the
+  // sensor device (MIPI-CSI/ISP producing RGB565, or DVP producing whatever the
+  // sensor does), jpeg_fd_ the M2M encoder fed from it and read back as JPEG.
   int capture_fd_{-1};
   int jpeg_fd_{-1};
   bool streaming_{false};
   uint32_t capture_width_{0};
   uint32_t capture_height_{0};
+  // The fourcc the capture device settled on; the encoder is told the same.
+  uint32_t capture_pixelformat_{0};
   static constexpr int MAX_BUFFERS = 3;
   struct MappedBuffer {
     void *start{nullptr};
@@ -229,4 +250,4 @@ class ESPVideoCamera : public camera::Camera {
 
 }  // namespace esphome::esp_video_camera
 
-#endif  // USE_ESP_IDF && USE_ESP32_VARIANT_ESP32P4
+#endif  // USE_ESP_IDF && (USE_ESP32_VARIANT_ESP32P4 || USE_ESP32_VARIANT_ESP32S31)

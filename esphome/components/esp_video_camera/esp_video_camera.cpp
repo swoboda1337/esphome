@@ -1,8 +1,9 @@
 #include "esp_video_camera.h"
 
-// This component is ESP32-P4 silicon (MIPI-CSI, ISP, hardware JPEG) and builds
-// only against esp_video's V4L2 headers, so it compiles on that variant alone.
-#if defined(USE_ESP_IDF) && defined(USE_ESP32_VARIANT_ESP32P4)
+// This component is ESP32-P4 (MIPI-CSI, ISP, hardware JPEG) and ESP32-S31 (DVP,
+// hardware JPEG) silicon and builds only against esp_video's V4L2 headers, so
+// it compiles on those variants alone.
+#if defined(USE_ESP_IDF) && (defined(USE_ESP32_VARIANT_ESP32P4) || defined(USE_ESP32_VARIANT_ESP32S31))
 
 #include "i2c_helper.h"
 #include "esphome/core/application.h"  // App.feed_wdt()
@@ -35,7 +36,7 @@ extern "C" {
 #include "linux/videodev2.h"
 #include "driver/ledc.h"
 #include "soc/soc_caps.h"       // SOC_LEDC_CHANNEL_NUM
-#include "driver/i2c_master.h"  // i2c_master_bus_handle_t, which the CSI config carries with or without USE_I2C
+#include "driver/i2c_master.h"  // i2c_master_bus_handle_t, which the sensor config carries with or without USE_I2C
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -84,6 +85,22 @@ static constexpr uint32_t CAPTURE_DQBUF_POLL_MS = 0;
 // cycling all of that on a browser reconnect or a burst of snapshots.
 static constexpr uint32_t CAPTURE_IDLE_TIMEOUT_MS = 5000;
 
+// The V4L2 node the camera sensor appears on. MIPI-CSI (through the ISP) on
+// the ESP32-P4, DVP on the ESP32-S31. esp_video can have both devices enabled
+// at once (the P4 has a DVP port too), so the interface is chosen here rather
+// than read off the sdkconfig, and only that interface's init code is built.
+#if CONFIG_ESP_VIDEO_ENABLE_MIPI_CSI_VIDEO_DEVICE
+#define ESP_VIDEO_CAMERA_SENSOR_CSI
+static constexpr const char *SENSOR_DEVICE_NAME = ESP_VIDEO_MIPI_CSI_DEVICE_NAME;
+static constexpr const char *SENSOR_INTERFACE = "MIPI-CSI";
+#elif CONFIG_ESP_VIDEO_ENABLE_DVP_VIDEO_DEVICE
+#define ESP_VIDEO_CAMERA_SENSOR_DVP
+static constexpr const char *SENSOR_DEVICE_NAME = ESP_VIDEO_DVP_DEVICE_NAME;
+static constexpr const char *SENSOR_INTERFACE = "DVP";
+#else
+#error "esp_video_camera needs the MIPI-CSI or the DVP video device enabled"
+#endif
+
 // How often deliver_frame_ reports the resolution and frame rate it is running
 // at. This is the component's only recurring log line.
 static constexpr uint32_t STATS_INTERVAL_MS = 10000;
@@ -96,7 +113,12 @@ static constexpr uint32_t STATS_INTERVAL_MS = 10000;
 // it. Declared in the header, which is why this is not in the anonymous
 // namespace below.
 struct VideoInitContext {
+#ifdef ESP_VIDEO_CAMERA_SENSOR_CSI
   esp_video_init_csi_config_t csi_config{};
+#endif
+#ifdef ESP_VIDEO_CAMERA_SENSOR_DVP
+  esp_video_init_dvp_config_t dvp_config{};
+#endif
 #if CONFIG_ESP_VIDEO_ENABLE_USB_UVC_VIDEO_DEVICE
   esp_video_init_usb_uvc_config_t uvc_config{};
 #endif
@@ -117,7 +139,7 @@ struct VideoInitContext {
 namespace {
 
 // ESP32-P4 camera hardware must be initialised on core 0; run esp_video_init
-// there regardless of which core ESPHome runs on.
+// there regardless of which core ESPHome runs on. Harmless on the S31.
 void video_init_task_core0(void *param) {
   auto *ctx = static_cast<VideoInitContext *>(param);
   ctx->result = esp_video_init(&ctx->video_config);
@@ -162,6 +184,7 @@ int count_usb_devices() {
 int count_usb_devices() { return -1; }
 #endif
 
+#ifdef ESP_VIDEO_CAMERA_SENSOR_CSI
 // Which LEDC timer and channel the sensor clock runs on: the top of the range.
 // ESPHome's `ledc` output component hands out channels from the bottom up and
 // derives its timer from the channel, so claiming channel 0 took the one it
@@ -195,6 +218,7 @@ esp_err_t init_xclk_ledc(gpio_num_t gpio_num, uint32_t freq_hz) {
   ch_conf.hpoint = 0;
   return ledc_channel_config(&ch_conf);
 }
+#endif  // ESP_VIDEO_CAMERA_SENSOR_CSI
 
 // Parse "WIDTHxHEIGHT", the only form the Python schema emits. False for "auto".
 bool parse_resolution(const std::string &res, uint32_t &width, uint32_t &height) {
@@ -241,7 +265,7 @@ const char *esp_video_errno_means(int err) {
     case ESRCH:
       return "the driver does not implement this";
     case ENODEV:
-      return "no free CSI controller or ISP processor";
+      return "no free camera controller or ISP processor";
     default:
       return "the driver failed without classifying why";
   }
@@ -379,21 +403,21 @@ void ESPVideoCamera::setup() {
     return;
   }
 
-  // The encoder is always present, but it is fed by /dev/video0, which only
+  // The encoder is always present, but it is fed by the sensor node, which only
   // exists once a sensor answered on the SCCB bus. Without this check the
   // component reports itself ready and then never delivers a frame.
   if (this->is_hw_jpeg_) {
-    int csi_fd = open(ESP_VIDEO_MIPI_CSI_DEVICE_NAME, O_RDWR | O_NONBLOCK);
-    if (csi_fd < 0) {
+    int sensor_fd = open(SENSOR_DEVICE_NAME, O_RDWR | O_NONBLOCK);
+    if (sensor_fd < 0) {
       ESP_LOGE(TAG,
-               "No MIPI-CSI sensor detected: %s is unavailable. Check the sensor wiring and that it "
+               "No %s sensor detected: %s is unavailable. Check the sensor wiring and that it "
                "answers on the configured I2C bus; the drivers built into this firmware are listed "
                "in the config dump above.",
-               ESP_VIDEO_MIPI_CSI_DEVICE_NAME);
+               SENSOR_INTERFACE, SENSOR_DEVICE_NAME);
       this->mark_failed();
       return;
     }
-    close(csi_fd);
+    close(sensor_fd);
   }
 
   // Never probe a USB camera by opening it. Opening that node is what runs
@@ -433,7 +457,7 @@ bool ESPVideoCamera::is_uvc_device_() const {
 bool ESPVideoCamera::start_pipeline_init_() {
   if (this->init_ctx_ != nullptr)
     return true;  // one is already under way
-  // A USB camera is not on any I2C bus, so only the MIPI-CSI path needs one.
+  // A USB camera is not on any I2C bus, so only a sensor needs one.
   const bool uvc_only = this->is_uvc_device_();
   i2c_master_bus_handle_t i2c_handle = nullptr;
   if (!uvc_only) {
@@ -449,14 +473,16 @@ bool ESPVideoCamera::start_pipeline_init_() {
     }
 #else
     // Unreachable in practice: the i2c_id: check rules this out at config time.
-    ESP_LOGE(TAG, "A MIPI-CSI sensor is probed over I2C, and this firmware was built without I2C");
+    ESP_LOGE(TAG, "A camera sensor is probed over I2C, and this firmware was built without I2C");
     return false;
 #endif  // USE_I2C
   }
 
+#ifdef ESP_VIDEO_CAMERA_SENSOR_CSI
   // esp_video_init() only probes for a MIPI sensor when config->csi is set, so
   // leave it NULL for a USB-only board.
-  // Start XCLK via LEDC if requested (MIPI sensors need it before init).
+  // Start XCLK via LEDC if requested (MIPI sensors need it before init). The
+  // DVP driver generates its own clock from the pin config instead.
   if (!uvc_only && this->enable_xclk_init_ && this->xclk_pin_ != (gpio_num_t) -1) {
     const esp_err_t err = init_xclk_ledc(this->xclk_pin_, this->xclk_freq_);
     if (err != ESP_OK) {
@@ -466,6 +492,7 @@ bool ESPVideoCamera::start_pipeline_init_() {
     }
     vTaskDelay(pdMS_TO_TICKS(50));
   }
+#endif
 
   // Heap-allocated so the configs stay valid for the init task even if the wait
   // below times out (see VideoInitContext).
@@ -477,18 +504,40 @@ bool ESPVideoCamera::start_pipeline_init_() {
     return false;
   }
 
+  esp_video_init_config_t &video_config = ctx->video_config;
+#ifdef ESP_VIDEO_CAMERA_SENSOR_CSI
   esp_video_init_csi_config_t &csi_config = ctx->csi_config;
   csi_config.sccb_config.init_sccb = false;  // reuse the ESPHome I2C bus
   csi_config.sccb_config.i2c_handle = i2c_handle;
   csi_config.sccb_config.freq = 400000;
-  csi_config.reset_pin = (gpio_num_t) -1;
-  csi_config.pwdn_pin = (gpio_num_t) -1;
+  csi_config.reset_pin = this->sensor_reset_pin_;
+  csi_config.pwdn_pin = this->sensor_pwdn_pin_;
   // Note: esp_video >= 2.x no longer takes xclk_pin/xclk_freq in the CSI config.
   // The sensor XCLK is generated separately via LEDC (see init_xclk_ledc above).
-
-  esp_video_init_config_t &video_config = ctx->video_config;
   if (!uvc_only)
     video_config.csi = &csi_config;
+#endif
+#ifdef ESP_VIDEO_CAMERA_SENSOR_DVP
+  esp_video_init_dvp_config_t &dvp_config = ctx->dvp_config;
+  dvp_config.sccb_config.init_sccb = false;  // reuse the ESPHome I2C bus
+  dvp_config.sccb_config.i2c_handle = i2c_handle;
+  dvp_config.sccb_config.freq = 100000;
+  dvp_config.reset_pin = this->sensor_reset_pin_;
+  dvp_config.pwdn_pin = this->sensor_pwdn_pin_;
+  dvp_config.dvp_pin.data_width = CAM_CTLR_DATA_WIDTH_8;
+  constexpr size_t data_lines = sizeof(dvp_config.dvp_pin.data_io) / sizeof(dvp_config.dvp_pin.data_io[0]);
+  for (size_t i = 0; i < data_lines; i++)
+    dvp_config.dvp_pin.data_io[i] = (i < 8) ? this->dvp_data_pins_[i] : GPIO_NUM_NC;
+  dvp_config.dvp_pin.vsync_io = this->dvp_vsync_pin_;
+  dvp_config.dvp_pin.de_io = this->dvp_href_pin_;
+  dvp_config.dvp_pin.pclk_io = this->dvp_pclk_pin_;
+  // The DVP controller drives the sensor clock itself; GPIO_NUM_NC means the
+  // board has its own oscillator.
+  dvp_config.dvp_pin.xclk_io = this->xclk_pin_;
+  dvp_config.xclk_freq = this->xclk_freq_;
+  if (!uvc_only)
+    video_config.dvp = &dvp_config;
+#endif
 
 #if CONFIG_ESP_VIDEO_ENABLE_USB_UVC_VIDEO_DEVICE
   esp_video_init_usb_uvc_config_t &uvc_config = ctx->uvc_config;
@@ -871,8 +920,8 @@ void ESPVideoCamera::loop_jpeg_pipeline_() {
         const void *start = this->capture_buffers_[cap_buf.index].start;
         auto ptr = (uintptr_t) start;
         ESP_LOGW(TAG, "  buffer %u: ptr=0x%08X psram=%s align32=%u align64=%u len=%u used=%u", (unsigned) cap_buf.index,
-                 (unsigned) ptr, esp_ptr_external_ram(start) ? "yes" : "NO", (unsigned) (ptr % 32),
-                 (unsigned) (ptr % 64), (unsigned) this->capture_buffers_[cap_buf.index].length,
+                 (unsigned) ptr, esp_ptr_external_ram(start) ? LOG_STR_LITERAL("yes") : LOG_STR_LITERAL("NO"),
+                 (unsigned) (ptr % 32), (unsigned) (ptr % 64), (unsigned) this->capture_buffers_[cap_buf.index].length,
                  (unsigned) cap_buf.bytesused);
       }
       encoder_broken = true;
@@ -983,15 +1032,16 @@ bool ESPVideoCamera::configure_capture_format_(uint32_t pixelformat) {
   uint32_t width = 0, height = 0;
   bool force_res = parse_resolution(this->resolution_, width, height);
 
-  // A MIPI-CSI sensor cannot be resized through V4L2: common_video_set_format()
-  // rejects any size but the sensor's current one, and ENUM_FRAMESIZES reports
-  // only that one. The size is a build-time Kconfig choice driven by
-  // `resolution:` (see __init__.py). USB-UVC devices do resize at runtime.
+  // A MIPI-CSI or DVP sensor cannot be resized through V4L2:
+  // common_video_set_format() rejects any size but the sensor's current one,
+  // and ENUM_FRAMESIZES reports only that one. The size is a build-time Kconfig
+  // choice driven by `resolution:` (see __init__.py). USB-UVC devices do resize
+  // at runtime.
   //
   // This asks about capture_fd_, and on the hardware-JPEG path that is the
-  // MIPI-CSI node while resolved_device_ names the encoder -- so the name alone
+  // sensor node while resolved_device_ names the encoder -- so the name alone
   // said a sensor could be resized.
-  const bool device_can_resize = !this->is_hw_jpeg_ && this->resolved_device_ != ESP_VIDEO_MIPI_CSI_DEVICE_NAME;
+  const bool device_can_resize = !this->is_hw_jpeg_ && this->resolved_device_ != SENSOR_DEVICE_NAME;
 
   struct v4l2_format fmt;
   memset(&fmt, 0, sizeof(fmt));
@@ -1032,6 +1082,7 @@ bool ESPVideoCamera::configure_capture_format_(uint32_t pixelformat) {
     this->capture_width_ = width;
     this->capture_height_ = height;
   }
+  this->capture_pixelformat_ = negotiated;
   ESP_LOGI(TAG, "Capture resolution: %ux%u (%s)", (unsigned) this->capture_width_, (unsigned) this->capture_height_,
            fourcc_to_string(negotiated).c_str());
 
@@ -1058,7 +1109,7 @@ bool ESPVideoCamera::configure_capture_format_(uint32_t pixelformat) {
       // The build asked the sensor driver for `resolution:` but a different
       // sensor answered on the bus, so it came up in its own default format.
       ESP_LOGW(TAG,
-               "The sensor is streaming %ux%u, not the configured %ux%u. A MIPI sensor's resolution is fixed when "
+               "The sensor is streaming %ux%u, not the configured %ux%u. A sensor's resolution is fixed when "
                "the firmware is built, so this means the detected sensor is not the one named in 'sensor_model'.",
                (unsigned) this->capture_width_, (unsigned) this->capture_height_, (unsigned) width, (unsigned) height);
     }
@@ -1173,25 +1224,60 @@ bool ESPVideoCamera::start_direct_capture_() {
 }
 
 bool ESPVideoCamera::start_jpeg_pipeline_() {
-  // Stage 1: sensor/ISP capture device producing RGB565 frames.
-  this->capture_fd_ = open(ESP_VIDEO_MIPI_CSI_DEVICE_NAME, O_RDWR | O_NONBLOCK);
+  // Stage 1: sensor capture device. Through the ISP (MIPI-CSI) this is asked
+  // for RGB565 whatever the sensor emits; on DVP there is no ISP, so it is
+  // whatever the sensor's build-time format is.
+  this->capture_fd_ = open(SENSOR_DEVICE_NAME, O_RDWR | O_NONBLOCK);
   if (this->capture_fd_ < 0) {
-    ESP_LOGE(TAG, "open(%s) failed: %s", ESP_VIDEO_MIPI_CSI_DEVICE_NAME, strerror(errno));
+    ESP_LOGE(TAG, "open(%s) failed: %s", SENSOR_DEVICE_NAME, strerror(errno));
     return false;
   }
   if (!set_dqbuf_timeout(this->capture_fd_, CAPTURE_DQBUF_POLL_MS, "capture"))
     return false;
-  if (!this->configure_capture_format_(V4L2_PIX_FMT_RGB565))
+  uint32_t raw_format = V4L2_PIX_FMT_RGB565;
+#ifdef ESP_VIDEO_CAMERA_SENSOR_DVP
+  struct v4l2_format native;
+  memset(&native, 0, sizeof(native));
+  native.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  if (ioctl(this->capture_fd_, VIDIOC_G_FMT, &native) < 0) {
+    ESP_LOGE(TAG, "Could not read the DVP sensor's format: %s", strerror(errno));
+    return false;
+  }
+  raw_format = native.fmt.pix.pixelformat;
+  switch (raw_format) {
+    case V4L2_PIX_FMT_JPEG:
+    case V4L2_PIX_FMT_MJPEG:
+      // The sensor encodes on its own; there is nothing for the encoder to do.
+      // Switch this capture, and every later one, to the direct path.
+      ESP_LOGI(TAG, "The DVP sensor outputs JPEG itself; streaming it directly from %s", SENSOR_DEVICE_NAME);
+      close(this->capture_fd_);
+      this->capture_fd_ = -1;
+      this->is_hw_jpeg_ = false;
+      this->resolved_device_ = SENSOR_DEVICE_NAME;
+      return this->start_direct_capture_();
+    case V4L2_PIX_FMT_RGB565:
+    case V4L2_PIX_FMT_UYVY:
+    case V4L2_PIX_FMT_GREY:
+      break;  // what the hardware encoder takes as-is
+    default:
+      ESP_LOGE(TAG,
+               "The DVP sensor outputs %s, which the hardware JPEG encoder cannot take. Pick a sensor_model/resolution "
+               "whose format is JPEG or YUV422 (UYVY).",
+               fourcc_to_string(raw_format).c_str());
+      return false;
+  }
+#endif
+  if (!this->configure_capture_format_(raw_format))
     return false;
   if (!this->setup_capture_buffers_())
     return false;
   int ctype = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   if (ioctl(this->capture_fd_, VIDIOC_STREAMON, &ctype) < 0) {
-    // Everything the CSI and ISP drivers reject here they first log themselves,
-    // under the "csi" and "ISP" tags and at error level, so the line above this
-    // one names the actual check that failed -- the frame size, the lane count,
-    // the ISP clock. Point at it, because this line alone cannot say.
-    ESP_LOGE(TAG, "Could not start the sensor at %ux%u: %s (%s). The csi/ISP error just above says which check failed.",
+    // Everything the CSI, ISP and DVP drivers reject here they first log
+    // themselves, under their own tags and at error level, so the line above
+    // this one names the actual check that failed -- the frame size, the lane
+    // count, the ISP clock. Point at it, because this line alone cannot say.
+    ESP_LOGE(TAG, "Could not start the sensor at %ux%u: %s (%s). The driver error just above says which check failed.",
              (unsigned) this->capture_width_, (unsigned) this->capture_height_, strerror(errno),
              esp_video_errno_means(errno));
     return false;
@@ -1216,7 +1302,7 @@ bool ESPVideoCamera::start_jpeg_pipeline_() {
   fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
   fmt.fmt.pix.width = this->capture_width_;
   fmt.fmt.pix.height = this->capture_height_;
-  fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_RGB565;
+  fmt.fmt.pix.pixelformat = this->capture_pixelformat_;
   if (ioctl(this->jpeg_fd_, VIDIOC_S_FMT, &fmt) < 0) {
     ESP_LOGE(TAG, "JPEG OUTPUT S_FMT failed: %s", strerror(errno));
     return false;
@@ -1375,7 +1461,12 @@ void ESPVideoCamera::dump_config() {
     // wrong on a sensor that never answers.
     char generated[40];
     const char *xclk = "left to the board";
-    if (this->enable_xclk_init_) {
+#ifdef ESP_VIDEO_CAMERA_SENSOR_DVP
+    const bool generates_xclk = this->xclk_pin_ != GPIO_NUM_NC;
+#else
+    const bool generates_xclk = this->enable_xclk_init_;
+#endif
+    if (generates_xclk) {
       snprintf(generated, sizeof(generated), "GPIO%d at %u Hz", (int) this->xclk_pin_, (unsigned) this->xclk_freq_);
       xclk = generated;
     }
@@ -1392,10 +1483,29 @@ void ESPVideoCamera::dump_config() {
 #ifdef CONFIG_CAMERA_SC2336
     drivers += " SC2336(0x30)";
 #endif
+#ifdef CONFIG_CAMERA_OV3660
+    drivers += " OV3660(0x3C)";
+#endif
+#ifdef CONFIG_CAMERA_OV2640
+    drivers += " OV2640(0x30)";
+#endif
+#ifdef CONFIG_CAMERA_SC101IOT
+    drivers += " SC101IOT(0x68)";
+#endif
+#ifdef CONFIG_CAMERA_GC0308
+    drivers += " GC0308(0x21)";
+#endif
     ESP_LOGCONFIG(TAG,
                   "  XCLK: %s\n"
-                  "  MIPI-CSI drivers:%s",
-                  xclk, drivers.empty() ? " none" : drivers.c_str());
+                  "  %s drivers:%s",
+                  xclk, SENSOR_INTERFACE, drivers.empty() ? LOG_STR_LITERAL(" none") : drivers.c_str());
+#ifdef ESP_VIDEO_CAMERA_SENSOR_DVP
+    ESP_LOGCONFIG(TAG, "  DVP pins: D0-D7 %d %d %d %d %d %d %d %d, VSYNC %d, HREF %d, PCLK %d",
+                  (int) this->dvp_data_pins_[0], (int) this->dvp_data_pins_[1], (int) this->dvp_data_pins_[2],
+                  (int) this->dvp_data_pins_[3], (int) this->dvp_data_pins_[4], (int) this->dvp_data_pins_[5],
+                  (int) this->dvp_data_pins_[6], (int) this->dvp_data_pins_[7], (int) this->dvp_vsync_pin_,
+                  (int) this->dvp_href_pin_, (int) this->dvp_pclk_pin_);
+#endif
   }
 
   if (this->is_failed()) {
@@ -1405,4 +1515,4 @@ void ESPVideoCamera::dump_config() {
 
 }  // namespace esphome::esp_video_camera
 
-#endif  // USE_ESP_IDF && USE_ESP32_VARIANT_ESP32P4
+#endif  // USE_ESP_IDF && (USE_ESP32_VARIANT_ESP32P4 || USE_ESP32_VARIANT_ESP32S31)
