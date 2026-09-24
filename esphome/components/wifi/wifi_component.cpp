@@ -643,6 +643,7 @@ void WiFiComponent::setup() {
       if (this->ap_setup_) {
         ESP_LOGD(TAG, "Provisioning window closed; disabling AP");
         this->wifi_mode_({}, false);
+        this->ap_setup_ = false;
       }
     });
   }
@@ -1345,6 +1346,7 @@ void WiFiComponent::disable() {
   this->state_ = WIFI_COMPONENT_STATE_DISABLED;
   this->wifi_disconnect_();
   this->wifi_mode_(false, false);
+  this->ap_setup_ = false;
 }
 
 void WiFiComponent::start_scanning() {
@@ -1643,6 +1645,8 @@ void WiFiComponent::check_connecting_finished(uint32_t now) {
 #endif
       ESP_LOGD(TAG, "Disabling AP");
       this->wifi_mode_({}, false);
+      // Let the fallback AP start again on the next outage in this boot.
+      this->ap_setup_ = false;
     }
 #ifdef USE_IMPROV_BLE
     if (this->is_improv_ble_active_()) {
