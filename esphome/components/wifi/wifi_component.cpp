@@ -1645,7 +1645,6 @@ void WiFiComponent::check_connecting_finished(uint32_t now) {
 #endif
       ESP_LOGD(TAG, "Disabling AP");
       this->wifi_mode_({}, false);
-      // Let the fallback AP start again on the next outage in this boot.
       this->ap_setup_ = false;
     }
 #ifdef USE_IMPROV_BLE
