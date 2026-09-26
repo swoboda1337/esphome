@@ -198,6 +198,10 @@ MediaPlayerCall &MediaPlayerCall::set_announcement(bool announce) {
 }
 
 void MediaPlayer::publish_state() {
+  if (this->state != this->last_published_state_) {
+    this->last_published_state_ = this->state;
+    this->state_change_callback_.call(this->state);
+  }
   this->state_callback_.call(this->state);
 #if defined(USE_MEDIA_PLAYER) && defined(USE_CONTROLLER_REGISTRY)
   ControllerRegistry::notify_media_player_update(this);

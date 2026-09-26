@@ -209,40 +209,40 @@ _CALLBACK_AUTOMATIONS = (
     ),
     automation.CallbackAutomation(
         CONF_ON_IDLE,
-        "add_on_state_callback",
+        "add_on_state_change_callback",
         forwarder=StateEnterForwarder.template(
             MediaPlayerState.MEDIA_PLAYER_STATE_IDLE
         ),
     ),
     automation.CallbackAutomation(
         CONF_ON_PLAY,
-        "add_on_state_callback",
+        "add_on_state_change_callback",
         forwarder=StateEnterForwarder.template(
             MediaPlayerState.MEDIA_PLAYER_STATE_PLAYING
         ),
     ),
     automation.CallbackAutomation(
         CONF_ON_PAUSE,
-        "add_on_state_callback",
+        "add_on_state_change_callback",
         forwarder=StateEnterForwarder.template(
             MediaPlayerState.MEDIA_PLAYER_STATE_PAUSED
         ),
     ),
     automation.CallbackAutomation(
         CONF_ON_ANNOUNCEMENT,
-        "add_on_state_callback",
+        "add_on_state_change_callback",
         forwarder=StateEnterForwarder.template(
             MediaPlayerState.MEDIA_PLAYER_STATE_ANNOUNCING
         ),
     ),
     automation.CallbackAutomation(
         CONF_ON_TURN_ON,
-        "add_on_state_callback",
+        "add_on_state_change_callback",
         forwarder=StateEnterForwarder.template(MediaPlayerState.MEDIA_PLAYER_STATE_ON),
     ),
     automation.CallbackAutomation(
         CONF_ON_TURN_OFF,
-        "add_on_state_callback",
+        "add_on_state_change_callback",
         forwarder=StateEnterForwarder.template(MediaPlayerState.MEDIA_PLAYER_STATE_OFF),
     ),
 )

@@ -158,6 +158,11 @@ class MediaPlayer : public EntityBase {
     this->state_callback_.add(std::forward<F>(callback));
   }
 
+  /// Fires only when publish_state() carries a state different from the last publish.
+  template<typename F> void add_on_state_change_callback(F &&callback) {
+    this->state_change_callback_.add(std::forward<F>(callback));
+  }
+
   virtual bool is_muted() const { return false; }
 
   virtual MediaPlayerTraits get_traits() = 0;
@@ -168,6 +173,8 @@ class MediaPlayer : public EntityBase {
   virtual void control(const MediaPlayerCall &call) = 0;
 
   LazyCallbackManager<void(MediaPlayerState)> state_callback_{};
+  LazyCallbackManager<void(MediaPlayerState)> state_change_callback_{};
+  MediaPlayerState last_published_state_{MEDIA_PLAYER_STATE_NONE};
 };
 
 }  // namespace esphome::media_player
