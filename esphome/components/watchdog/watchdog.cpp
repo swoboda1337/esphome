@@ -18,6 +18,11 @@ namespace esphome::watchdog {
 
 static const char *const TAG = "http_request.watchdog";
 
+#ifdef USE_ESP32
+// The task watchdog has no getter, so track the timeout in effect for nesting
+static uint32_t current_timeout_ms = (uint32_t) CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000;
+#endif
+
 WatchdogManager::WatchdogManager(uint32_t timeout_ms) : timeout_ms_(timeout_ms) {
   if (timeout_ms == 0) {
     return;
@@ -51,6 +56,7 @@ void WatchdogManager::set_timeout_(uint32_t timeout_ms) {
   wdt_config.trigger_panic = true;
 #endif
   esp_task_wdt_reconfigure(&wdt_config);
+  current_timeout_ms = timeout_ms;
 #endif  // USE_ESP32
 
 #ifdef USE_RP2
@@ -62,7 +68,7 @@ uint32_t WatchdogManager::get_timeout_() {
   uint32_t timeout_ms = 0;
 
 #ifdef USE_ESP32
-  timeout_ms = (uint32_t) CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000;
+  timeout_ms = current_timeout_ms;
 #endif  // USE_ESP32
 
 #ifdef USE_RP2
