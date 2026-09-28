@@ -1,8 +1,11 @@
 """ESP-IDF direct build generator for ESPHome."""
 
+import hashlib
 import json
 import logging
 from pathlib import Path
+import posixpath
+import re
 
 from esphome.components.esp32 import (
     get_esp32_variant,
@@ -282,6 +285,11 @@ idf_component_register(
 target_link_options(${{COMPONENT_LIB}} PUBLIC
     {link_opts_str}
 )
+
+# Precompile the core headers once; only C++ sources load them
+target_precompile_headers(${{COMPONENT_LIB}} PRIVATE
+    "$<$<COMPILE_LANGUAGE:CXX>:${{CMAKE_CURRENT_SOURCE_DIR}}/esphome/core/pch_prefix.h>"
+)
 """
 
 
@@ -313,3 +321,45 @@ def write_project(
         CORE.relative_build_path("exclude_components.esphomeinternal"),
         ";".join(get_excluded_builtin_components()),
     )
+
+
+_INCLUDE_RE = re.compile(rb'^\s*#\s*include\s+["<]([^">]+)[">]', re.MULTILINE)
+PCH_SUM_PATH = "build/esp-idf/src/CMakeFiles/__idf_src.dir/cmake_pch.hxx.gch.sum"
+
+
+def _include_closure(src_dir: Path, roots: list[str]) -> dict[str, bytes]:
+    """src-relative name -> contents for every header reachable from roots."""
+    seen: dict[str, bytes] = {}
+    stack = [(name, "") for name in roots]
+    while stack:
+        name, from_dir = stack.pop()
+        for candidate in (f"{from_dir}/{name}" if from_dir else name, name):
+            rel = posixpath.normpath(candidate)
+            if not rel.startswith("..") and (src_dir / rel).is_file():
+                break
+        else:
+            continue
+        if rel in seen:
+            continue
+        data = seen[rel] = (src_dir / rel).read_bytes()
+        parent = posixpath.dirname(rel)
+        stack.extend((inc.decode(), parent) for inc in _INCLUDE_RE.findall(data))
+    return seen
+
+
+def write_pch_sum() -> None:
+    """ccache keys pch consumers on this digest instead of the .gch bytes."""
+    closure = _include_closure(
+        CORE.relative_src_path(), ["esphome/core/pch_prefix.h"]
+    )
+    h = hashlib.sha256()
+    for name in sorted(closure):
+        h.update(name.encode())
+        h.update(closure[name])
+    h.update(str(idf_version()).encode())
+    sdkconfig = CORE.relative_build_path(f"sdkconfig.{CORE.name}")
+    if sdkconfig.is_file():
+        h.update(sdkconfig.read_bytes())
+    out = CORE.relative_build_path(PCH_SUM_PATH)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    write_file_if_changed(out, h.hexdigest() + "\n")

@@ -1240,6 +1240,11 @@ def _ccache_env() -> dict[str, str]:
         return {"IDF_CCACHE_ENABLE": "0"}
 
     env = ccache_defaults_env(get_idf_tools_path() / "ccache")
+    # ccache refuses to cache compiles that load a .gch without these
+    if "CCACHE_SLOPPINESS" not in os.environ:
+        env["CCACHE_SLOPPINESS"] = "pch_defines,time_macros"
+    if "CCACHE_PCH_EXTSUM" not in os.environ:
+        env["CCACHE_PCH_EXTSUM"] = "true"
     # Exactly one canonical spelling ever reaches idf.py, whatever the
     # accepted input spelling was ("enable", "yes", ...)
     env["IDF_CCACHE_ENABLE"] = "1"
