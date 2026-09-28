@@ -323,26 +323,26 @@ bool Esp32HostedUpdate::fetch_manifest_() {
 }
 
 bool Esp32HostedUpdate::stream_firmware_to_coprocessor_() {
+  // Begin OTA on coprocessor
+  esp_err_t err = esp_hosted_slave_ota_begin();  // NOLINT
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to begin OTA: %s", esp_err_to_name(err));
+    this->status_set_error(LOG_STR("Failed to begin OTA"));
+    return false;
+  }
+
   ESP_LOGI(TAG, "Downloading firmware");
 
   auto container = this->http_request_parent_->get(this->firmware_url_);
   if (container == nullptr || container->status_code != 200) {
     ESP_LOGE(TAG, "Failed to fetch firmware");
+    esp_hosted_slave_ota_end();  // NOLINT
     this->status_set_error(LOG_STR("Failed to fetch firmware"));
     return false;
   }
 
   size_t total_size = container->content_length;
   ESP_LOGI(TAG, "Firmware size: %zu bytes", total_size);
-
-  // Begin OTA on coprocessor
-  esp_err_t err = esp_hosted_slave_ota_begin();  // NOLINT
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to begin OTA: %s", esp_err_to_name(err));
-    container->end();
-    this->status_set_error(LOG_STR("Failed to begin OTA"));
-    return false;
-  }
 
   // Stream firmware to coprocessor while computing SHA256
   // NOTE: HttpContainer::read() has non-BSD socket semantics - see http_request.h
