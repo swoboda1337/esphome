@@ -1,0 +1,95 @@
+{
+  "audio": [
+    "buffer_memory",
+    "flac",
+    "floating_point",
+    "mp3",
+    "opus",
+    "pseudostack",
+    "state_memory",
+    "threadsafe",
+    "wav"
+  ],
+  "esphome": [
+    "allow_plaintext_upload",
+    "old_key"
+  ],
+  "it8951": [
+    "dithering",
+    "force_temperature",
+    "grayscale",
+    "update_mode",
+    "use_legacy_dpy_area",
+    "vcom",
+    "vcom_register"
+  ],
+  "lvgl": [
+    "button_style",
+    "close_button",
+    "dark_mode",
+    "flex_align_cross",
+    "flex_align_main",
+    "flex_align_track",
+    "flex_flow",
+    "flex_grow",
+    "grid_cell_column_pos",
+    "grid_cell_column_span",
+    "grid_cell_row_pos",
+    "grid_cell_row_span",
+    "grid_column_align",
+    "grid_columns",
+    "grid_row_align",
+    "grid_rows",
+    "header_buttons",
+    "if_nan",
+    "mapping",
+    "multiple_widgets_per_cell",
+    "sections",
+    "time_format"
+  ],
+  "mcp23xxx_base": [
+    "mcp23xxx"
+  ],
+  "micro_wake_word": [
+    "feature_step_size",
+    "sliding_window_average_size",
+    "tensor_arena_size"
+  ],
+  "mitsubishi_cn105": [
+    "current_temperature_min_interval"
+  ],
+  "modbus_client": [
+    "retry"
+  ],
+  "openthread": [
+    "rcp"
+  ],
+  "sensor": [
+    "a",
+    "b",
+    "c"
+  ],
+  "udp": [
+    "broadcast_port",
+    "listen_port"
+  ],
+  "wifi": [
+    "ap_mode",
+    "ap_timeout",
+    "device_info",
+    "dns_servers",
+    "max_age"
+  ],
+  "wk2168_i2c": [
+    "wk2168_i2c"
+  ],
+  "wk2168_spi": [
+    "wk2168_spi"
+  ],
+  "wk2212_i2c": [
+    "wk2212_i2c"
+  ],
+  "wk2212_spi": [
+    "wk2212_spi"
+  ]
+}
