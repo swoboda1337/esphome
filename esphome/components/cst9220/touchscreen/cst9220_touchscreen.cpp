@@ -98,11 +98,14 @@ void CST9220Touchscreen::update_touches() {
   uint8_t ack = TOUCH_ACK;
   this->write_register16(REG_TOUCH_DATA, &ack, 1);
 
-  // A valid report carries the ACK marker at offset 6; offset 0 holds the first
-  // point and must be neither the ACK marker nor empty. Anything else means no
-  // valid touch data this cycle, which we report as zero touches (not a skip).
-  if (data[0] == TOUCH_ACK || data[0] == 0x00 || data[6] != TOUCH_ACK)
+  // The ACK marker at offset 0 means the last report was already acknowledged and
+  // no new one has arrived; a missing marker at offset 6 means the report is
+  // incomplete. Neither says anything about the fingers, so keep the previous
+  // state. A release arrives as a complete report with no point down.
+  if (data[0] == TOUCH_ACK || data[6] != TOUCH_ACK) {
+    this->skip_update_ = true;
     return;
+  }
 
   uint8_t num_touches = data[5] & 0x7F;
   if (num_touches > CST9220_MAX_TOUCHES)
