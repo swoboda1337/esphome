@@ -1,0 +1,8 @@
+packages:
+  remote_receiver: !include ../../test_build_components/common/remote_receiver/esp8266-ard.yaml
+
+vevor_dtx:
+  id: vevor_dtx_hub
+  receiver_id: rcvr
+  bit_time: 88us
+  station_id: 4660

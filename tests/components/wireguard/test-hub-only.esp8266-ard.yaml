@@ -1,0 +1,23 @@
+packages:
+  i2c: !include ../../test_build_components/common/i2c/esp8266-ard.yaml
+
+wireguard:
+  time_id: sntp_time
+  address: 172.16.34.100
+  netmask: 255.255.255.0
+  private_key: wPBMxtNYH3mChicrbpsRpZIasIdPq3yZuthn23FbGG8=
+  peer_public_key: Hs2JfikvYU03/Kv3YoAs1hrUIPPTEkpsZKSPUljE9yc=
+  peer_preshared_key: 20fjM5GRnSolGPC5SRj9ljgIUyQfruv0B0bvLl3Yt60=
+  peer_endpoint: wg.server.example
+  peer_persistent_keepalive: 25s
+  peer_allowed_ips:
+    - 172.16.34.0/24
+    - 192.168.4.0/24
+
+wifi:
+  ssid: MySSID
+  password: password1
+
+time:
+  - platform: sntp
+    id: sntp_time

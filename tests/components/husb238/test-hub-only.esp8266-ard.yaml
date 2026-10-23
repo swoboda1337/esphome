@@ -1,0 +1,6 @@
+packages:
+  i2c: !include ../../test_build_components/common/i2c/esp8266-ard.yaml
+
+husb238:
+  id: husb238_hub
+  i2c_id: i2c_bus

@@ -1,0 +1,5 @@
+packages:
+  uart: !include ../../test_build_components/common/uart/esp8266-ard.yaml
+
+ld2460:
+  - id: ld2460_radar

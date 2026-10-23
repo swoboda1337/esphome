@@ -1,0 +1,5 @@
+packages:
+  uart_115200: !include ../../test_build_components/common/uart_115200/esp8266-ard.yaml
+
+ld2410s:
+  uart_id: uart_bus

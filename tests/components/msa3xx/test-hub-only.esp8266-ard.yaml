@@ -1,0 +1,18 @@
+packages:
+  i2c: !include ../../test_build_components/common/i2c/esp8266-ard.yaml
+
+msa3xx:
+  i2c_id: i2c_bus
+  type: msa301
+  range: 4G
+  resolution: 14
+  update_interval: 10s
+  calibration:
+    offset_x: -0.25
+    offset_y: -0.4
+    offset_z: -0.8
+  transform:
+    mirror_x: false
+    mirror_y: true
+    mirror_z: true
+    swap_xy: false

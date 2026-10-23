@@ -1,0 +1,6 @@
+packages:
+  modbus_server: !include ../../test_build_components/common/modbus_server/esp8266-ard.yaml
+
+hoermann_hcp:
+  id: hoermann_hcp_hub
+  modbus_id: modbus_server_bus

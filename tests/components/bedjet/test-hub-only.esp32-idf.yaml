@@ -1,0 +1,16 @@
+packages:
+  ble: !include ../../test_build_components/common/ble/esp32-idf.yaml
+
+bedjet:
+  - id: bedjet_hub
+    ble_client_id: bedjet_blec
+
+wifi:
+  ssid: MySSID
+  password: password1
+
+esp32_ble_tracker: null
+
+ble_client:
+  - mac_address: 01:02:03:04:05:06
+    id: bedjet_blec

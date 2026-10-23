@@ -1,0 +1,6 @@
+packages:
+  i2c: !include ../../test_build_components/common/i2c/esp8266-ard.yaml
+
+gdk101:
+  i2c_id: i2c_bus
+  id: my_gdk101

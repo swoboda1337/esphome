@@ -1,0 +1,5 @@
+packages:
+  uart: !include ../../test_build_components/common/uart/esp8266-ard.yaml
+
+rd03d:
+  id: rd03d_radar

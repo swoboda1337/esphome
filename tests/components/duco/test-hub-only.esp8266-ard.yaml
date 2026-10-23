@@ -1,0 +1,6 @@
+packages:
+  uart_57600: !include ../../test_build_components/common/uart_57600/esp8266-ard.yaml
+
+duco:
+  id: duco_box
+  discovery: {}

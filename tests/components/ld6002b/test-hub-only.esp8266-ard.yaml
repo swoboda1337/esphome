@@ -1,0 +1,6 @@
+packages:
+  uart_115200: !include ../../test_build_components/common/uart_115200/esp8266-ard.yaml
+
+ld6002b:
+  id: ld6002b_radar
+  wakeup_pin: GPIO14

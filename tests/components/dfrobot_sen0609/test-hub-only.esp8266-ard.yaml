@@ -1,0 +1,6 @@
+packages:
+  uart: !include ../../test_build_components/common/uart/esp8266-ard.yaml
+
+dfrobot_sen0609:
+  id: sen0609_presence
+  mode: presence
