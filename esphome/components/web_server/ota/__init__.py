@@ -1,6 +1,7 @@
 import logging
 
 import esphome.codegen as cg
+from esphome.components.captive_portal import DOMAIN as CAPTIVE_PORTAL_DOMAIN
 from esphome.components.esp32 import add_idf_component
 from esphome.components.ota import (
     BASE_OTA_SCHEMA,
@@ -8,9 +9,17 @@ from esphome.components.ota import (
     OTAComponent,
     ota_to_code,
 )
+from esphome.components.wifi import DOMAIN as WIFI_DOMAIN
 from esphome.config_helpers import merge_config
 import esphome.config_validation as cv
-from esphome.const import CONF_ID, CONF_PLATFORM
+from esphome.const import (
+    CONF_AP,
+    CONF_AUTH,
+    CONF_ID,
+    CONF_PASSWORD,
+    CONF_PLATFORM,
+    CONF_WEB_SERVER,
+)
 from esphome.core import CORE, coroutine_with_priority
 from esphome.coroutine import CoroPriority
 import esphome.final_validate as fv
@@ -27,6 +36,29 @@ web_server_ns = cg.esphome_ns.namespace("web_server")
 WebServerOTAComponent = web_server_ns.class_("WebServerOTAComponent", OTAComponent)
 
 
+def _warn_unauthenticated_captive_portal_ota(full_conf: ConfigType) -> None:
+    """Warn when the captive portal serves /update on an open AP with no login."""
+    if CAPTIVE_PORTAL_DOMAIN not in full_conf:
+        return
+    web_server_conf = full_conf.get(CONF_WEB_SERVER)
+    if web_server_conf is not None and CONF_AUTH in web_server_conf:
+        return
+    ap_conf = full_conf.get(WIFI_DOMAIN, {}).get(CONF_AP)
+    if ap_conf is None or ap_conf.get(CONF_PASSWORD):
+        return
+    _LOGGER.warning(
+        "'%s' serves the %s OTA '/update' endpoint on the open fallback access "
+        "point without authentication. Set a '%s' on 'wifi.%s' or configure "
+        "'%s.%s' so firmware uploads require a login",
+        CAPTIVE_PORTAL_DOMAIN,
+        CONF_WEB_SERVER,
+        CONF_PASSWORD,
+        CONF_AP,
+        CONF_WEB_SERVER,
+        CONF_AUTH,
+    )
+
+
 def _web_server_ota_final_validate(config: ConfigType) -> None:
     """Merge multiple web_server OTA instances into one.
 
@@ -34,6 +66,7 @@ def _web_server_ota_final_validate(config: ConfigType) -> None:
     causing undefined behavior. Merge them into a single instance.
     """
     full_conf = fv.full_config.get()
+    _warn_unauthenticated_captive_portal_ota(full_conf)
     ota_confs = full_conf.get(OTA_DOMAIN, [])
 
     web_server_ota_configs: list[ConfigType] = []
