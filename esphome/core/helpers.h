@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cerrno>
 #include <cmath>
 #include <cstdarg>
 #include <cstddef>
@@ -1368,9 +1369,12 @@ size_t truncate_name_to(char *buffer, size_t buffer_size, const char *name, size
 template<typename T, enable_if_t<(std::is_integral<T>::value && std::is_unsigned<T>::value), int> = 0>
 optional<T> parse_number(const char *str) {
   char *end = nullptr;
+  errno = 0;
   unsigned long value = ::strtoul(str, &end, 10);  // NOLINT(google-runtime-int)
-  if (end == str || *end != '\0' || value > std::numeric_limits<T>::max())
+  if (end == str || *end != '\0' || errno == ERANGE || std::strchr(str, '-') != nullptr ||
+      value > std::numeric_limits<T>::max()) {
     return {};
+  }
   return value;
 }
 /// Parse an unsigned decimal number.
@@ -1382,9 +1386,12 @@ optional<T> parse_number(const std::string &str) {
 template<typename T, enable_if_t<(std::is_integral<T>::value && std::is_signed<T>::value), int> = 0>
 optional<T> parse_number(const char *str) {
   char *end = nullptr;
+  errno = 0;
   signed long value = ::strtol(str, &end, 10);  // NOLINT(google-runtime-int)
-  if (end == str || *end != '\0' || value < std::numeric_limits<T>::min() || value > std::numeric_limits<T>::max())
+  if (end == str || *end != '\0' || errno == ERANGE || value < std::numeric_limits<T>::min() ||
+      value > std::numeric_limits<T>::max()) {
     return {};
+  }
   return value;
 }
 /// Parse a signed decimal number.
