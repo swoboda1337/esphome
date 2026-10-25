@@ -1,3 +1,5 @@
+import logging
+
 import esphome.codegen as cg
 from esphome.components import i2c, sensirion_common, sensor
 from esphome.components.const import (
@@ -24,6 +26,8 @@ from esphome.const import (
 )
 from esphome.types import ConfigType
 
+_LOGGER = logging.getLogger(__name__)
+
 DEPENDENCIES = ["i2c"]
 AUTO_LOAD = ["sensirion_common"]
 CODEOWNERS = ["@SenexCrenshaw", "@martgras"]
@@ -45,27 +49,37 @@ def validate_sensors(config: ConfigType) -> ConfigType:
     return config
 
 
-def _gas_sensor_schema(index_offset_default: int) -> cv.Schema:
-    return cv.Schema(
+def _drop_nox_std_initial(config: ConfigType) -> ConfigType:
+    # Remove before 2027.5.0
+    if config.pop(CONF_STD_INITIAL, None) is not None:
+        _LOGGER.warning(
+            "[sgp4x] 'std_initial' has no effect on the NOx algorithm; remove it from "
+            "nox_index.algorithm_tuning. Removed in 2027.5.0"
+        )
+    return config
+
+
+def _gas_sensor_schema(index_offset_default: int, *, nox: bool) -> cv.Schema:
+    tuning = cv.Schema(
         {
-            cv.Optional(CONF_ALGORITHM_TUNING): cv.Schema(
-                {
-                    cv.Optional(
-                        CONF_INDEX_OFFSET, default=index_offset_default
-                    ): cv.int_,
-                    cv.Optional(CONF_LEARNING_TIME_OFFSET_HOURS, default=12): cv.int_,
-                    cv.Optional(CONF_LEARNING_TIME_GAIN_HOURS, default=12): cv.int_,
-                    cv.Optional(CONF_GATING_MAX_DURATION_MINUTES, default=720): cv.int_,
-                    cv.Optional(CONF_STD_INITIAL, default=50): cv.int_,
-                    cv.Optional(CONF_GAIN_FACTOR, default=230): cv.int_,
-                }
-            )
+            cv.Optional(CONF_INDEX_OFFSET, default=index_offset_default): cv.int_,
+            cv.Optional(CONF_LEARNING_TIME_OFFSET_HOURS, default=12): cv.int_,
+            cv.Optional(CONF_LEARNING_TIME_GAIN_HOURS, default=12): cv.int_,
+            cv.Optional(CONF_GATING_MAX_DURATION_MINUTES, default=720): cv.int_,
+            cv.Optional(CONF_GAIN_FACTOR, default=230): cv.int_,
         }
     )
+    if nox:
+        tuning = tuning.extend({cv.Optional(CONF_STD_INITIAL): cv.int_}).add_extra(
+            _drop_nox_std_initial
+        )
+    else:
+        tuning = tuning.extend({cv.Optional(CONF_STD_INITIAL, default=50): cv.int_})
+    return cv.Schema({cv.Optional(CONF_ALGORITHM_TUNING): tuning})
 
 
-VOC_SENSOR = _gas_sensor_schema(100)
-NOX_SENSOR = _gas_sensor_schema(1)
+VOC_SENSOR = _gas_sensor_schema(100, nox=False)
+NOX_SENSOR = _gas_sensor_schema(1, nox=True)
 
 CONFIG_SCHEMA = cv.All(
     cv.rename_key(CONF_VOC, CONF_VOC_INDEX, removed_in="2027.2.0", component="sgp4x"),
