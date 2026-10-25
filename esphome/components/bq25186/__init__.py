@@ -5,6 +5,7 @@ from typing import Any
 from esphome import automation
 import esphome.codegen as cg
 from esphome.components import i2c
+from esphome.config import path_context
 import esphome.config_validation as cv
 from esphome.const import CONF_ID, CONF_UPDATE_INTERVAL, CONF_WATCHDOG
 from esphome.core import CORE, ID, Lambda, TimePeriod
@@ -332,8 +333,16 @@ CONFIG_SCHEMA = cv.All(
 
 
 @dataclass
+class ApplyRef:
+    """An apply_configuration action to check against its charger once the whole config is known."""
+
+    config: ConfigType
+    component_path: list[str | int]
+
+
+@dataclass
 class BQ25186Data:
-    apply_actions: list[ConfigType] = field(default_factory=list)
+    apply_refs: list[ApplyRef] = field(default_factory=list)
 
 
 def _get_data() -> BQ25186Data:
@@ -343,7 +352,7 @@ def _get_data() -> BQ25186Data:
 
 
 def _record_apply_action(config: ConfigType) -> ConfigType:
-    _get_data().apply_actions.append(config)
+    _get_data().apply_refs.append(ApplyRef(config, path_context.get()))
     return config
 
 
@@ -361,15 +370,16 @@ CONFIGURE_ACTION_SCHEMA = cv.All(
 
 def _final_validate(config: ConfigType) -> None:
     """An apply_configuration action may enable a watchdog the charger's own config does not."""
-    for action in _get_data().apply_actions:
-        if action[CONF_ID] != config[CONF_ID]:
+    for ref in _get_data().apply_refs:
+        if ref.config[CONF_ID] != config[CONF_ID]:
             continue
         try:
-            _check_watchdog({**config, **action})
+            _check_watchdog({**config, **ref.config})
         except cv.Invalid as err:
-            raise cv.Invalid(
-                f"bq25186.apply_configuration on {config[CONF_ID].id}: {err.msg}",
-                path=[CONF_UPDATE_INTERVAL],
+            raise cv.FinalExternalInvalid(
+                f"bq25186.apply_configuration: {err.msg} "
+                f"({config[CONF_ID].id} polls every {config[CONF_UPDATE_INTERVAL]})",
+                path=[cv.ROOT_CONFIG_PATH, *ref.component_path],
             ) from err
 
 
