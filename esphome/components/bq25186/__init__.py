@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from esphome import automation
@@ -6,7 +7,8 @@ import esphome.codegen as cg
 from esphome.components import i2c
 import esphome.config_validation as cv
 from esphome.const import CONF_ID, CONF_UPDATE_INTERVAL, CONF_WATCHDOG
-from esphome.core import CORE, ID, EsphomeError, Lambda, TimePeriod
+from esphome.core import CORE, ID, Lambda, TimePeriod
+import esphome.final_validate as fv
 from esphome.types import ConfigType, TemplateArgsType
 
 CODEOWNERS = ["@Rapsssito"]
@@ -328,13 +330,50 @@ CONFIG_SCHEMA = cv.All(
     _check_watchdog,
 )
 
-CONFIGURE_ACTION_SCHEMA = automation.maybe_simple_id(
-    cv.Schema(
-        {
-            cv.Required(CONF_ID): cv.use_id(BQ25186Component),
-        }
-    ).extend(_field_schema(with_defaults=False))
+
+@dataclass
+class BQ25186Data:
+    apply_actions: list[ConfigType] = field(default_factory=list)
+
+
+def _get_data() -> BQ25186Data:
+    if DOMAIN not in CORE.data:
+        CORE.data[DOMAIN] = BQ25186Data()
+    return CORE.data[DOMAIN]
+
+
+def _record_apply_action(config: ConfigType) -> ConfigType:
+    _get_data().apply_actions.append(config)
+    return config
+
+
+CONFIGURE_ACTION_SCHEMA = cv.All(
+    automation.maybe_simple_id(
+        cv.Schema(
+            {
+                cv.Required(CONF_ID): cv.use_id(BQ25186Component),
+            }
+        ).extend(_field_schema(with_defaults=False))
+    ),
+    _record_apply_action,
 )
+
+
+def _final_validate(config: ConfigType) -> None:
+    """An apply_configuration action may enable a watchdog the charger's own config does not."""
+    for action in _get_data().apply_actions:
+        if action[CONF_ID] != config[CONF_ID]:
+            continue
+        try:
+            _check_watchdog({**config, **action})
+        except cv.Invalid as err:
+            raise cv.Invalid(
+                f"bq25186.apply_configuration on {config[CONF_ID].id}: {err.msg}",
+                path=[CONF_UPDATE_INTERVAL],
+            ) from err
+
+
+FINAL_VALIDATE_SCHEMA = _final_validate
 
 
 async def to_code(config: ConfigType) -> None:
@@ -359,14 +398,8 @@ async def bq25186_configure_to_code(
     parent = await cg.get_variable(config[CONF_ID])
 
     # Options the action leaves out fall back to the component's configuration
-    path = CORE.config.get_path_for_id(config[CONF_ID])[:-1]
-    parent_config = CORE.config.get_config_for_path(path)
-    merged = {**parent_config, **config}
-    try:
-        _check_watchdog(merged)
-    except cv.Invalid as err:
-        raise EsphomeError(f"bq25186.apply_configuration: {err.msg}") from err
-    regs = pack_registers(merged)
+    parent_config = fv.get_declaring_config(config[CONF_ID], CORE.config)
+    regs = pack_registers({**parent_config, **config})
 
     text = str(cg.statement(parent.apply_config(cg.ArrayInitializer(*regs))))
     lambda_ = await cg.process_lambda(Lambda(text), args, return_type=cg.void)
