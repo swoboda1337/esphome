@@ -21,12 +21,14 @@ from .. import (
     validate_writer_item,
 )
 from ..const import (
+    CONF_BITMASK,
     CONF_CUSTOM_COMMAND,
     CONF_CUSTOM_PDU,
     CONF_FORCE_NEW_RANGE,
     CONF_MODBUS_CONTROLLER_ID,
     CONF_REGISTER_COUNT,
     CONF_REGISTER_TYPE,
+    CONF_RESPONSE_SIZE,
     CONF_REUSE_PREVIOUS_RANGE,
     CONF_USE_WRITE_MULTIPLE,
     CONF_VALUE_TYPE,
@@ -47,10 +49,24 @@ ModbusBinaryOutput = modbus_controller_ns.class_(
 )
 
 
+# Read-side keys from ModbusItemBaseSchema, redeclared without their defaults so a user setting
+# can be told apart from the shared default and warned about below.
+_READ_ONLY_ITEM_OPTIONS = {
+    cv.Optional(CONF_BITMASK): cv.hex_uint32_t,
+    cv.Optional(CONF_RESPONSE_SIZE): cv.int_range(min=0, max=250),
+}
+
+
 def _warn_unused_range_options(config: ConfigType) -> ConfigType:
     # Outputs are write-only and never polled, so nothing here builds a range for them. The write
-    # spans whatever the payload holds, so register_count no longer bounds it either.
-    for key in (CONF_FORCE_NEW_RANGE, CONF_REGISTER_COUNT):
+    # spans whatever the payload holds, so register_count no longer bounds it either, and the
+    # response is never decoded, so bitmask and response_size have nothing to apply to.
+    for key in (
+        CONF_FORCE_NEW_RANGE,
+        CONF_REGISTER_COUNT,
+        CONF_BITMASK,
+        CONF_RESPONSE_SIZE,
+    ):
         if config.pop(key, None) is not None:
             _LOGGER.warning(
                 "%s: '%s' has no effect on outputs; remove it. Removed in 2027.3.0",
@@ -81,6 +97,7 @@ CONFIG_SCHEMA = cv.All(
                     cv.Optional(CONF_WRITE_LAMBDA): cv.returning_lambda,
                     cv.Optional(CONF_USE_WRITE_MULTIPLE, default=False): cv.boolean,
                     **modbus.command_options_schema(direction="write"),
+                    **_READ_ONLY_ITEM_OPTIONS,
                 }
             ),
             "holding": cv.All(
@@ -101,6 +118,7 @@ CONFIG_SCHEMA = cv.All(
                         cv.Optional(CONF_MULTIPLY, default=1.0): cv.float_,
                         cv.Optional(CONF_USE_WRITE_MULTIPLE, default=False): cv.boolean,
                         **modbus.command_options_schema(direction="write"),
+                        **_READ_ONLY_ITEM_OPTIONS,
                     }
                 ),
                 reject_odd_holding_write_offset,
