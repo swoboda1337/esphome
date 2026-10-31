@@ -1,0 +1,132 @@
+# Opens a pull request for every managed ESP-IDF component with a newer
+# release on the Espressif Component Registry.
+#
+# Dependabot does not know the registry, so script/bump_idf_components.py
+# compares the pins in esphome/idf_component.yml against it and rewrites
+# every copy of an outdated pin (the manifest, the add_idf_component call
+# and any platformio.ini library line). Each component gets its own branch
+# and pull request, like Dependabot, so a release that breaks the build
+# does not block the others. Re-runs refresh an open pull request in place;
+# a pin that must stay behind goes in the script's HOLD table.
+
+name: Bump IDF components
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "Only this component, e.g. espressif/mdns (default: all)"
+        required: false
+        type: string
+  schedule:
+    - cron: "15 6 * * 1"
+
+# Repo writes (branch push, PR open) happen via the App token minted below,
+# so the workflow's GITHUB_TOKEN does not need any write scopes.
+permissions:
+  contents: read  # actions/checkout
+
+jobs:
+  discover:
+    name: Find outdated pins
+    runs-on: ubuntu-latest
+    if: github.repository == 'esphome/esphome'
+    outputs:
+      outdated: ${{ steps.list.outputs.outdated }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install PyYAML
+        # The script reads the manifest through PyYAML. Take the pin from
+        # requirements.txt so this workflow has no copy of its own.
+        run: pip install "$(grep -iE '^pyyaml==' requirements.txt | cut -d'#' -f1)"
+
+      - name: List outdated pins
+        id: list
+        env:
+          COMPONENT: ${{ inputs.component }}
+        run: |
+          outdated=$(python script/bump_idf_components.py list $COMPONENT)
+          echo "outdated=$outdated" >> "$GITHUB_OUTPUT"
+
+  bump:
+    name: Bump ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    needs: discover
+    if: needs.discover.outputs.outdated != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.outdated) }}
+    steps:
+      - name: Generate a token
+        id: generate-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.ESPHOME_GITHUB_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ESPHOME_GITHUB_APP_PRIVATE_KEY }}
+          # Scope the minted App token to the minimum needed by peter-evans/create-pull-request.
+          permission-contents: write       # git.createCommit + refs.create/update to push the bump branch
+          permission-pull-requests: write  # pulls.create / pulls.update to open or refresh the bump PR
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install PyYAML
+        run: pip install "$(grep -iE '^pyyaml==' requirements.txt | cut -d'#' -f1)"
+
+      - name: Bump pins
+        env:
+          COMPONENT: ${{ matrix.name }}
+          VERSION: ${{ matrix.latest }}
+        run: python script/bump_idf_components.py bump "$COMPONENT" "$VERSION"
+
+      - name: Write pull request body
+        id: body
+        env:
+          COMPONENT: ${{ matrix.name }}
+          CURRENT: ${{ matrix.current }}
+          VERSION: ${{ matrix.latest }}
+          URL: ${{ matrix.url }}
+          CHANGELOG: ${{ matrix.changelog }}
+        run: |
+          {
+            echo "body<<BODY_EOF"
+            echo "Bumps [$COMPONENT]($URL) from $CURRENT to $VERSION."
+            echo
+            if [ -n "$CHANGELOG" ]; then
+              echo "- [Changelog]($CHANGELOG)"
+            fi
+            echo "- [Release on the Espressif Component Registry]($URL)"
+            echo
+            echo "Opened by the Bump IDF components workflow."
+            echo "BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          commit-message: "Bump ${{ matrix.name }} from ${{ matrix.current }} to ${{ matrix.latest }}"
+          committer: esphome[bot] <115708604+esphome[bot]@users.noreply.github.com>
+          author: esphome[bot] <115708604+esphome[bot]@users.noreply.github.com>
+          branch: bump/idf-component/${{ matrix.name }}
+          delete-branch: true
+          title: "Bump ${{ matrix.name }} from ${{ matrix.current }} to ${{ matrix.latest }}"
+          body: ${{ steps.body.outputs.body }}
+          labels: dependencies
+          token: ${{ steps.generate-token.outputs.token }}
