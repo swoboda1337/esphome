@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 from typing import Any
+import urllib.error
 
 import pytest
 
@@ -112,10 +113,23 @@ lib_deps =
 """
 
 
-def registry(versions: dict[str, list[dict[str, Any]]]) -> bump_mod.FetchJson:
-    """A fake registry serving ``versions`` per component name."""
+def registry(
+    versions: dict[str, list[dict[str, Any]]],
+    platformio: dict[str, list[str]] | None = None,
+) -> bump_mod.FetchJson:
+    """A fake Espressif registry serving ``versions`` per component name,
+    and a fake PlatformIO registry serving ``platformio`` per library."""
 
     def fetch(url: str) -> Any:
+        if url.startswith(bump_mod.PLATFORMIO_API):
+            owner, _, library = url.removeprefix(bump_mod.PLATFORMIO_API).split("/")
+            names = (platformio or {}).get(f"{owner}/{library}")
+            if names is None:
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+            return {
+                "version": {"name": names[0]},
+                "versions": [{"name": name} for name in names],
+            }
         name = url.removeprefix(bump_mod.REGISTRY_API)
         return {"versions": versions[name]}
 
@@ -195,22 +209,24 @@ def test_latest_release_without_any_release() -> None:
         bump_mod.latest_release("espressif/mdns", fetch)
 
 
-def test_find_outdated(monkeypatch: pytest.MonkeyPatch) -> None:
+CURRENT_RELEASES = {
+    name: [release(current)]
+    for name, current in bump_mod.manifest_pins(MANIFEST).items()
+}
+
+
+def test_find_outdated(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fetch = registry(
         {
-            "bblanchon/arduinojson": [release("7.4.3")],
+            **CURRENT_RELEASES,
             "espressif/mdns": [release("1.14.1"), release("1.14.0")],
             "espressif/esp-tflite-micro": [release("1.3.3~2"), release("1.3.3~1")],
-            "espressif/lan87xx": [release("1.0.0")],
-            "espressif/ch390": [release("0.3.0")],
-            "espressif/ksz80xx": [release("1.0.0")],
             "esphome/noise-c": [release("0.1.32")],
-            "esphome/shorthand": [release("2.1.0")],
         }
     )
     monkeypatch.setattr(bump_mod, "HOLD", {"esphome/noise-c": "needs api changes"})
 
-    outdated = bump_mod.find_outdated(MANIFEST, fetch=fetch)
+    outdated = bump_mod.find_outdated(repo, fetch=fetch)
 
     assert [(o.name, o.current, o.latest) for o in outdated] == [
         ("espressif/mdns", "1.14.0", "1.14.1"),
@@ -221,15 +237,109 @@ def test_find_outdated(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_find_outdated_filters_to_requested_names() -> None:
+def test_find_outdated_filters_to_requested_names(repo: Path) -> None:
     fetch = registry(
         {
             "espressif/mdns": [release("1.14.1")],
             "esphome/noise-c": [release("0.1.32")],
         }
     )
-    outdated = bump_mod.find_outdated(MANIFEST, {"espressif/mdns"}, fetch=fetch)
+    outdated = bump_mod.find_outdated(repo, {"espressif/mdns"}, fetch=fetch)
     assert [o.name for o in outdated] == ["espressif/mdns"]
+
+
+def test_find_outdated_skips_pins_it_cannot_rewrite(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (repo / "esphome/components/mdns/__init__.py").write_text(
+        'MDNS = "espressif/mdns"\nadd_idf_component(name=MDNS, ref="1.14.0")\n'
+    )
+    fetch = registry(
+        {
+            **CURRENT_RELEASES,
+            "espressif/mdns": [release("1.14.1")],
+            # A registry revision cannot go into the constant shared with
+            # add_library.
+            "esphome/noise-c": [release("0.1.31~1")],
+        },
+        {"esphome/noise-c": ["0.1.31"]},
+    )
+
+    assert bump_mod.find_outdated(repo, fetch=fetch) == []
+
+    err = capsys.readouterr().err
+    assert "skipping espressif/mdns: esphome/components/mdns/__init__.py" in err
+    assert "skipping esphome/noise-c: NOISE_C_VERSION also pins" in err
+
+
+def test_find_outdated_waits_for_platformio_registry(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    versions = {
+        **CURRENT_RELEASES,
+        "bblanchon/arduinojson": [release("7.4.4")],
+        "esphome/noise-c": [release("0.1.32")],
+    }
+
+    # PlatformIO still serves the old releases: nothing to bump yet.
+    fetch = registry(
+        versions,
+        {"bblanchon/ArduinoJson": ["7.4.3"], "esphome/noise-c": ["0.1.31"]},
+    )
+    assert bump_mod.find_outdated(repo, fetch=fetch) == []
+    err = capsys.readouterr().err
+    assert (
+        "bblanchon/arduinojson: 7.4.3 -> 7.4.4 waits for bblanchon/ArduinoJson "
+        "7.4.4 on the PlatformIO registry" in err
+    )
+    assert "esphome/noise-c: 0.1.31 -> 0.1.32 waits for esphome/noise-c" in err
+
+    # A library the PlatformIO registry does not know at all waits as well.
+    fetch = registry(versions, {})
+    assert bump_mod.find_outdated(repo, fetch=fetch) == []
+
+    # Both registries carry the release: bump.
+    fetch = registry(
+        versions,
+        {"bblanchon/ArduinoJson": ["7.4.4", "7.4.3"], "esphome/noise-c": ["0.1.32"]},
+    )
+    assert [o.latest for o in bump_mod.find_outdated(repo, fetch=fetch)] == [
+        "7.4.4",
+        "0.1.32",
+    ]
+
+
+def test_find_outdated_revision_only_bump_needs_no_platformio_release(
+    repo: Path,
+) -> None:
+    # json pins the PlatformIO side with its own literal, so an IDF-only
+    # revision is fine and the PlatformIO registry is not consulted.
+    fetch = registry(
+        {**CURRENT_RELEASES, "bblanchon/arduinojson": [release("7.4.3~1")]}
+    )
+    assert [o.latest for o in bump_mod.find_outdated(repo, fetch=fetch)] == ["7.4.3~1"]
+
+
+def test_platformio_twin(repo: Path) -> None:
+    assert bump_mod.platformio_twin(repo, "bblanchon/arduinojson") == (
+        "bblanchon/ArduinoJson"
+    )
+    assert bump_mod.platformio_twin(repo, "esphome/noise-c") == "esphome/noise-c"
+    assert bump_mod.platformio_twin(repo, "espressif/mdns") is None
+
+    # Only pinned through add_library, not platformio.ini.
+    (repo / "platformio.ini").unlink()
+    assert bump_mod.platformio_twin(repo, "bblanchon/arduinojson") == (
+        "bblanchon/ArduinoJson"
+    )
+
+
+def test_platformio_has_raises_on_server_errors() -> None:
+    def fetch(url: str) -> Any:
+        raise urllib.error.HTTPError(url, 503, "Unavailable", {}, None)
+
+    with pytest.raises(urllib.error.HTTPError):
+        bump_mod.platformio_has("esphome/noise-c", "0.1.32", fetch)
 
 
 def test_rewrite_manifest_preserves_quoting_and_layout() -> None:
@@ -371,6 +481,7 @@ def repo(tmp_path: Path) -> Path:
     for name, text in {
         "mdns": MDNS_PY,
         "noise": NOISE_PY,
+        "json": JSON_PY,
         "ethernet": ETHERNET_PY,
     }.items():
         (components / name).mkdir(parents=True)

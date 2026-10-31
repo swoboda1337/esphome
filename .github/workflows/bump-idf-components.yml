@@ -4,10 +4,12 @@
 # Dependabot does not know the registry, so script/bump_idf_components.py
 # compares the pins in esphome/idf_component.yml against it and rewrites
 # every copy of an outdated pin (the manifest, the add_idf_component call
-# and any platformio.ini library line). Each component gets its own branch
-# and pull request, like Dependabot, so a release that breaks the build
-# does not block the others. Re-runs refresh an open pull request in place;
-# a pin that must stay behind goes in the script's HOLD table.
+# and, for a library on both registries, the add_library call and the
+# platformio.ini line, once the PlatformIO registry carries the release).
+# Each component gets its own branch and pull request, like Dependabot, so
+# a release that breaks the build does not block the others. Re-runs
+# refresh an open pull request in place; a pin that must stay behind goes
+# in the script's HOLD table.
 
 name: Bump IDF components
 

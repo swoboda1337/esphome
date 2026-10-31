@@ -3,10 +3,13 @@
 
 Managed components from the Espressif Component Registry are pinned in
 ``esphome/idf_component.yml`` and again in the Python module that calls
-``add_idf_component`` for them; a few libraries carry a third copy in
-``platformio.ini`` for the PlatformIO builds. Dependabot cannot see the
+``add_idf_component`` for them. A few libraries are published to the
+PlatformIO registry as well and pinned a third time through
+``cg.add_library`` and ``platformio.ini``. Dependabot cannot see either
 registry, so this script treats the manifest as the source of truth, asks
-the registry for newer releases and rewrites every copy of the pin.
+the Espressif registry for newer releases and rewrites every copy of the
+pin; a library with a PlatformIO twin is only bumped once that registry
+carries the release too, so the pull request can pass the Arduino builds.
 
     bump_idf_components.py list             # JSON list of outdated pins
     bump_idf_components.py bump NS/NAME VER  # rewrite the pins for one
@@ -40,6 +43,7 @@ COMPONENTS_DIR = Path("esphome/components")
 
 REGISTRY_URL = "https://components.espressif.com"
 REGISTRY_API = f"{REGISTRY_URL}/api/components/"
+PLATFORMIO_API = "https://api.registry.platformio.org/v3/packages/"
 
 # Components deliberately held at their current pin, with the reason.
 HOLD: dict[str, str] = {}
@@ -175,12 +179,56 @@ def latest_release(name: str, fetch: FetchJson = fetch_json) -> tuple[str, str |
     return best[1], best[2]
 
 
+def platformio_twin(root: Path, name: str) -> str | None:
+    """The PlatformIO spelling of ``name`` when the library is pinned there too.
+
+    Looks for ``owner/Name@version`` in platformio.ini and
+    ``add_library("owner/Name", ...)`` in the components; the PlatformIO
+    registry keeps the owner's capitalisation.
+    """
+    escaped = re.escape(name)
+    platformio_path = root / PLATFORMIO_INI
+    if platformio_path.is_file() and (
+        match := re.search(
+            rf"(?im)^\s*({escaped})@", platformio_path.read_text(encoding="utf-8")
+        )
+    ):
+        return match[1]
+    for path in sorted((root / COMPONENTS_DIR).rglob("*.py")):
+        if match := re.search(
+            rf'add_library\(\s*"((?i:{escaped}))"', path.read_text(encoding="utf-8")
+        ):
+            return match[1]
+    return None
+
+
+def platformio_has(twin: str, version: str, fetch: FetchJson = fetch_json) -> bool:
+    """Whether the PlatformIO registry carries ``version`` of library ``twin``."""
+    owner, _, library = twin.partition("/")
+    try:
+        doc = fetch(f"{PLATFORMIO_API}{owner}/library/{library}")
+    except urllib.error.HTTPError as err:
+        if err.code == 404:
+            return False
+        raise
+    names = {entry.get("name") for entry in doc.get("versions") or []}
+    if isinstance(latest := doc.get("version"), dict):
+        names.add(latest.get("name"))
+    return version in names
+
+
 def find_outdated(
-    manifest_text: str,
+    root: Path,
     only: set[str] | None = None,
     fetch: FetchJson = fetch_json,
 ) -> list[Outdated]:
-    """Manifest pins with a newer release, ``HOLD`` entries excluded."""
+    """Manifest pins with a newer release that the script can apply.
+
+    Skips ``HOLD`` entries, pins whose layout ``plan_bump`` cannot rewrite
+    and libraries whose PlatformIO twin does not carry the release yet, so
+    every entry returned becomes a pull request that can pass CI.
+    """
+    manifest_text = (root / MANIFEST).read_text(encoding="utf-8")
     outdated: list[Outdated] = []
     for name, current in manifest_pins(manifest_text).items():
         if only is not None and name not in only:
@@ -195,6 +243,20 @@ def find_outdated(
         latest, changelog = latest_release(name, fetch)
         if Version.parse(latest) <= pinned:
             continue
+        try:
+            plan_bump(root, name, latest)
+        except BumpError as err:
+            print(f"skipping {err}", file=sys.stderr)
+            continue
+        if (twin := platformio_twin(root, name)) is not None:
+            base = _base_version(latest)
+            if base != _base_version(current) and not platformio_has(twin, base, fetch):
+                print(
+                    f"{name}: {current} -> {latest} waits for {twin} {base} "
+                    "on the PlatformIO registry",
+                    file=sys.stderr,
+                )
+                continue
         outdated.append(Outdated(name, current, latest, changelog))
     return outdated
 
@@ -279,11 +341,11 @@ def rewrite_platformio(text: str, name: str, old: str, new: str) -> tuple[str, i
     )
 
 
-def bump(root: Path, name: str, new: str) -> list[Path]:
-    """Rewrite every copy of the pin for ``name``; returns the changed files.
+def plan_bump(root: Path, name: str, new: str) -> list[tuple[Path, str]]:
+    """The files and their new contents for bumping ``name`` to ``new``.
 
-    Every rewrite is computed before any file is written, so a pin the
-    script cannot handle leaves the checkout untouched.
+    Nothing is written, so a pin the script cannot handle raises without
+    touching the checkout.
     """
     manifest_path = root / MANIFEST
     manifest_text = manifest_path.read_text(encoding="utf-8")
@@ -316,6 +378,12 @@ def bump(root: Path, name: str, new: str) -> list[Path]:
         if count:
             writes.append((platformio_path, rewritten))
 
+    return writes
+
+
+def bump(root: Path, name: str, new: str) -> list[Path]:
+    """Rewrite every copy of the pin for ``name``; returns the changed files."""
+    writes = plan_bump(root, name, new)
     for path, text in writes:
         path.write_text(text, encoding="utf-8")
     return [path.relative_to(root) for path, _ in writes]
@@ -342,9 +410,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "list":
-            manifest_text = (args.root / MANIFEST).read_text(encoding="utf-8")
             outdated = find_outdated(
-                manifest_text, set(args.names) or None, fetch=fetch_json
+                args.root, set(args.names) or None, fetch=fetch_json
             )
             for item in outdated:
                 print(f"{item.name}: {item.current} -> {item.latest}", file=sys.stderr)
