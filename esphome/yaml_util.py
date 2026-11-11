@@ -73,9 +73,10 @@ def _record_dropped_merge_key(parent_file: Path, key: Any) -> None:
     """Record a mapping key that a ``<<`` merge silently dropped.
 
     Merge keys follow the YAML spec's shallow, first-wins semantics: a key that
-    already exists in the mapping (or came from an earlier merge) is discarded
-    rather than deep-merged the way ``packages:`` would combine it. We collect
-    these so a single warning can be emitted once the config is loaded.
+    came from an earlier merge is discarded rather than deep-merged the way
+    ``packages:`` would combine it. We collect these so a single warning can be
+    emitted once the config is loaded. A key set explicitly in the mapping is an
+    intentional override and is not recorded.
     """
     esp_range = getattr(key, "esp_range", None)
     location = str(esp_range.start_mark) if esp_range is not None else str(parent_file)
@@ -933,9 +934,11 @@ class ESPHomeLoaderMixin:
                     #  turn according to its order in the sequence. Keys in mapping nodes earlier
                     #  in the sequence override keys specified in later mapping nodes."
                     #
-                    # This is a silent shallow drop (unlike `packages:`, which deep-merges).
-                    # Record it so a warning can be emitted after the config loads.
-                    _record_dropped_merge_key(self.name, key)
+                    # A collision between two merges is a silent shallow drop (unlike
+                    # `packages:`, which deep-merges). Record it so a warning can be
+                    # emitted after the config loads. Explicit keys carry a start mark.
+                    if seen_keys[key] is None:
+                        _record_dropped_merge_key(self.name, key)
                     continue
                 pairs.append((key, value))
                 # Add key node to seen keys, for sequence merge values.

@@ -2368,6 +2368,69 @@ def test_merge_include_no_overlap_records_nothing(
     assert yaml_util_module.take_dropped_merge_keys() == []
 
 
+def test_merge_explicit_override_records_nothing(
+    tmp_path: Path, yaml_util_module: ModuleType
+) -> None:
+    """A key set next to `<<` overrides the merged one without being recorded."""
+    test_yaml = tmp_path / "test.yaml"
+    test_yaml.write_text(
+        "switch:\n"
+        "  - &common\n"
+        "    platform: gpio\n"
+        "    pin: GPIO10\n"
+        "    id: relay_1\n"
+        "  - <<: *common\n"
+        "    pin: GPIO11\n"
+        "    id: relay_2\n"
+    )
+
+    with patch.object(core.CORE, "config_path", test_yaml):
+        result = yaml_util_module.load_yaml(test_yaml)
+
+    assert result["switch"][1] == {"pin": "GPIO11", "id": "relay_2", "platform": "gpio"}
+    assert yaml_util_module.take_dropped_merge_keys() == []
+
+
+def test_merge_include_explicit_override_records_nothing(
+    tmp_path: Path, yaml_util_module: ModuleType
+) -> None:
+    """A key set in the including file overrides the included one silently."""
+    (tmp_path / "a.yaml").write_text("api:\n  reboot_timeout: 5min\n")
+    test_yaml = tmp_path / "test.yaml"
+    test_yaml.write_text("<<: !include a.yaml\napi:\n  password: secret\n")
+
+    with patch.object(core.CORE, "config_path", test_yaml):
+        result = yaml_util_module.load_yaml(test_yaml)
+
+    assert result["api"] == {"password": "secret"}
+    assert yaml_util_module.take_dropped_merge_keys() == []
+
+
+def test_merge_sequence_records_only_merge_collisions(
+    tmp_path: Path, yaml_util_module: ModuleType
+) -> None:
+    """Only the key two merged mappings fight over is recorded."""
+    test_yaml = tmp_path / "test.yaml"
+    test_yaml.write_text(
+        "first: &first\n"
+        "  port: 6053\n"
+        "  reboot_timeout: 15min\n"
+        "second: &second\n"
+        "  port: 6054\n"
+        "  reboot_timeout: 5min\n"
+        "api:\n"
+        "  <<: [*first, *second]\n"
+        "  port: 6055\n"
+    )
+
+    with patch.object(core.CORE, "config_path", test_yaml):
+        result = yaml_util_module.load_yaml(test_yaml)
+
+    assert result["api"] == {"port": 6055, "reboot_timeout": "15min"}
+    dropped = yaml_util_module.take_dropped_merge_keys()
+    assert [key for key, _ in dropped] == ["reboot_timeout"]
+
+
 def test_wrapper_representers_consult_is_secret(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -2522,7 +2585,13 @@ def test_load_yaml_fast_mode_records_dropped_merge_keys(
     With plain keys there is no esp_range, so the recorded location falls
     back to the parent file name.
     """
-    yaml_file = fast_mode_config_dir / "main.yaml"
+    yaml_file = _write(
+        fast_mode_config_dir,
+        "collision.yaml",
+        "first: &first\n  port: 6053\n"
+        "second: &second\n  port: 6054\n"
+        "api:\n  <<: [*first, *second]\n",
+    )
 
     yaml_util_module.load_yaml(yaml_file, track_document_range=False)
     assert yaml_util_module.take_dropped_merge_keys() == [("port", str(yaml_file))]
