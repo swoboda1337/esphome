@@ -248,9 +248,7 @@ void WebServer::handle_index_request(AsyncWebServerRequest *request) {
 #endif
   stream->print(ESPHOME_F("<h2>Debug Log</h2><pre id=\"log\"></pre>"));
 #ifdef USE_WEBSERVER_JS_INCLUDE
-  if (this->js_include_ != nullptr) {
-    stream->print(ESPHOME_F("<script type=\"module\" src=\"/0.js\"></script>"));
-  }
+  stream->print(ESPHOME_F("<script type=\"module\" src=\"/0.js\"></script>"));
 #endif
   if (strlen(this->js_url_) > 0) {
     stream->print(ESPHOME_F("<script src=\""));
