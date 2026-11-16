@@ -7,6 +7,10 @@ namespace esphome::mlx90393 {
 
 static const char *const TAG = "mlx90393";
 
+static constexpr uint32_t EXIT_DELAY_MS = 2;
+static constexpr uint32_t RESET_DELAY_MS = 2;
+static constexpr uint8_t READY_ATTEMPTS = 5;
+
 const LogString *settings_to_string(MLX90393Setting setting) {
   switch (setting) {
     case MLX90393_GAIN_SEL:
@@ -89,12 +93,28 @@ uint8_t MLX90393Cls::apply_setting_(MLX90393Setting which) {
   return ret;
 }
 
-bool MLX90393Cls::apply_all_settings_() {
-  // perform dummy read after reset
-  // first one always gets NAK even tough everything is fine
-  uint8_t ignore = 0;
-  this->mlx_.getGainSel(ignore);
+void MLX90393Cls::exit_mode_() {
+  const uint8_t cmd = MLX90393::CMD_EXIT;
+  uint8_t status = 0;
+  this->transceive(&cmd, 1, &status, 1);
+  delay(EXIT_DELAY_MS);
+}
 
+bool MLX90393Cls::reset_() {
+  this->exit_mode_();
+  this->mlx_.reset();
+  delay(RESET_DELAY_MS);
+  uint8_t ignore = 0;
+  for (uint8_t attempt = 0; attempt < READY_ATTEMPTS; attempt++) {
+    if (this->mlx_.getGainSel(ignore) == MLX90393::STATUS_OK) {
+      return true;
+    }
+    delay(1);
+  }
+  return false;
+}
+
+bool MLX90393Cls::apply_all_settings_() {
   uint8_t result = MLX90393::STATUS_OK;
   for (int i = MLX90393_GAIN_SEL; i != MLX90393_LAST; i++) {
     MLX90393Setting stage = static_cast<MLX90393Setting>(i);
@@ -107,9 +127,10 @@ void MLX90393Cls::setup() {
   // note the two arguments A0 and A1 which are used to construct an i2c address
   // we can hard-code these because we never actually use the constructed address
   // see the transceive function above, which uses the address from I2CComponent
+  this->exit_mode_();
   this->mlx_.begin_with_hal(this, 0, 0);
 
-  if (!this->apply_all_settings_()) {
+  if (!this->reset_() || !this->apply_all_settings_()) {
     this->mark_failed();
   }
 
@@ -247,7 +268,7 @@ void MLX90393Cls::verify_settings_timeout_(MLX90393Setting stage) {
   bool is_setting_ok = this->verify_setting_(stage);
 
   if (!is_setting_ok) {
-    if (this->mlx_.checkStatus(this->mlx_.reset()) != MLX90393::STATUS_OK) {
+    if (!this->reset_()) {
       ESP_LOGE(TAG, "failed to reset device");
       this->status_set_error();
       this->mark_failed();
