@@ -66,6 +66,8 @@ class MLX90393Cls final : public PollingComponent, public i2c::I2CDevice, public
   uint8_t hallconf_{0xC};
   GPIOPin *drdy_pin_{nullptr};
 
+  void exit_mode_();
+  bool reset_();
   bool apply_all_settings_();
   uint8_t apply_setting_(MLX90393Setting which);
 
