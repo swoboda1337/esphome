@@ -214,21 +214,26 @@ def test_has_outdated_files_detects_exclusion_change(setup_core: Path) -> None:
     (build / "config" / "sdkconfig.h").write_text("")
     cmakecache = build / "CMakeCache.txt"
     cmakecache.write_text("")
-    (build / "build.ninja").write_text("")
+    build_ninja = build / "build.ninja"
+    build_ninja.write_text("")
 
     with patch.object(CORE, "name", "test"):
         assert not toolchain.has_outdated_files()
 
         stamp = setup_core / "exclude_components.esphomeinternal"
         stamp.write_text("unity")
-        os.utime(stamp, (cmakecache.stat().st_mtime + 10,) * 2)
+        os.utime(stamp, (build_ninja.stat().st_mtime + 10,) * 2)
 
         assert toolchain.has_outdated_files()
 
-        # The flag must clear once the reference file is restamped (as
-        # run_compile does after a successful discovery reconfigure);
-        # otherwise every later build would repeat the discovery pass.
+        # cmake leaves CMakeCache.txt alone when no cache entry changed, so
+        # a newer cache must not clear the flag
         os.utime(cmakecache, (stamp.stat().st_mtime + 10,) * 2)
+        assert toolchain.has_outdated_files()
+
+        # A configure always rewrites build.ninja; otherwise every later
+        # build would repeat the discovery pass.
+        os.utime(build_ninja, (stamp.stat().st_mtime + 10,) * 2)
         assert not toolchain.has_outdated_files()
 
 
@@ -419,10 +424,9 @@ def test_get_cmake_output_missing_build_does_not_resolve_idf_env(
     mock_run.assert_not_called()
 
 
-def test_run_compile_restamps_cmakecache_after_discovery(setup_core: Path) -> None:
-    """After a successful discovery reconfigure the reference CMakeCache.txt
-    is restamped; cmake does not rewrite it when only properties or plain
-    variables change, so the staleness flag would otherwise never clear."""
+def test_run_compile_leaves_cmake_outputs_unstamped(setup_core: Path) -> None:
+    """CMakeCache.txt is an input of ninja's regenerate rule: touching it after
+    the configure makes ninja run cmake once more at the start of the build."""
     _setup_build(setup_core)
     config = {CONF_ESPHOME: {}}
     cmakecache = CORE.relative_build_path("build/CMakeCache.txt")
@@ -448,14 +452,12 @@ def test_run_compile_restamps_cmakecache_after_discovery(setup_core: Path) -> No
     ):
         assert toolchain.run_compile(config, verbose=False) == 0
 
-    assert cmakecache.stat().st_mtime > old
-    # build.ninja must not be older than the cache or ninja re-runs cmake
-    assert build_ninja.stat().st_mtime >= cmakecache.stat().st_mtime
+    assert cmakecache.stat().st_mtime == old
+    assert build_ninja.stat().st_mtime == old
 
 
 def test_run_compile_discovery_without_cmakecache(setup_core: Path) -> None:
-    """A discovery pass that produced no CMakeCache.txt (nothing to restamp)
-    still completes normally."""
+    """A discovery pass that produced no CMakeCache.txt still completes normally."""
     _setup_build(setup_core)
     config = {CONF_ESPHOME: {}}
 
@@ -547,14 +549,9 @@ def test_run_compile_reconfigures_after_full_write_outside_testing_mode(
     setup_core: Path,
 ) -> None:
     """The full CMakeLists write is followed by a reconfigure (#18682); a
-    failure there stops the build and leaves the cache unstamped."""
+    failure there stops the build."""
     _setup_build(setup_core)
     config = {CONF_ESPHOME: {}}
-    cmakecache = CORE.relative_build_path("build/CMakeCache.txt")
-    cmakecache.parent.mkdir(parents=True, exist_ok=True)
-    cmakecache.write_text("")
-    old = cmakecache.stat().st_mtime - 100
-    os.utime(cmakecache, (old, old))
     calls: list[tuple] = []
     reconfigures = 0
 
@@ -589,7 +586,6 @@ def test_run_compile_reconfigures_after_full_write_outside_testing_mode(
         ("run_reconfigure",),
     ]
     mock_build.assert_not_called()
-    assert cmakecache.stat().st_mtime == old
 
 
 def _record_compile_calls(

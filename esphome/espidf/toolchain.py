@@ -690,7 +690,9 @@ def has_outdated_files():
     """Check if the build configuration is stale.
 
     Returns True if required build files are missing or if ESPHome's
-    resolved build inputs are newer than CMakeCache.txt:
+    resolved build inputs are newer than build.ninja. cmake rewrites
+    build.ninja on every configure, unlike CMakeCache.txt, which it leaves
+    alone when no cache entry changed:
 
     - ``sdkconfig.<name>.esphomeinternal`` -- the canonical "what state
       did ESPHome resolve the YAML to" snapshot. Any change in build
@@ -710,10 +712,7 @@ def has_outdated_files():
 
     We deliberately don't watch:
     - The top-level/src ``CMakeLists.txt`` -- ESPHome owns those, and
-      ninja already tracks them as configure-time deps. Including them
-      causes a perpetual reconfigure loop because CMake doesn't restamp
-      ``CMakeCache.txt`` when only ``idf_build_set_property`` values
-      change between configures.
+      ninja already tracks them as configure-time deps.
     - ``$IDF_PATH`` and CMake's ``build/config/`` -- both have mtime
       semantics that fire after the wrong configure (or not at all in
       common cases like in-place IDF version replacement). The sdkconfig
@@ -737,16 +736,12 @@ def has_outdated_files():
         return True
     if not build_ninja_path.is_file():
         return True
-    if (
-        dependency_lock_path.is_file()
-        and dependency_lock_path.stat().st_mtime > build_ninja_path.stat().st_mtime
-    ):
-        return True
 
-    cmakecache_txt_mtime = cmakecache_txt_path.stat().st_mtime
+    build_ninja_mtime = build_ninja_path.stat().st_mtime
     return any(
-        f.stat().st_mtime > cmakecache_txt_mtime
+        f.stat().st_mtime > build_ninja_mtime
         for f in [
+            dependency_lock_path,
             sdkconfig_internal_path,
             idf_component_yml_path,
             exclude_components_path,
@@ -880,15 +875,6 @@ def run_compile(config, verbose: bool) -> int:
     if need_reconfigure():
         if (rc := _configure_project(verbose)) != 0:
             return rc
-        # cmake does not rewrite CMakeCache.txt when only properties change,
-        # so restamp it or every build repeats discovery. Only after success,
-        # or a failed reconfigure would be marked fresh. build.ninja is
-        # restamped too so the cache is not newer and ninja does not
-        # re-run cmake.
-        for name in ("build/CMakeCache.txt", "build/build.ninja"):
-            path = CORE.relative_build_path(name)
-            if path.is_file():
-                os.utime(path)
     elif _cache_entries_changed():
         _LOGGER.info("CMake cache options changed, reconfiguring")
         if (rc := run_reconfigure(verbose)) != 0:
