@@ -60,13 +60,13 @@ def test_write_sdkconfig_cleans_only_on_platformio(
         if clean_expected:
             clean.assert_called_once_with(clear_pio_cache=False)
         # The change must still trigger a reconfigure: the internal
-        # sdkconfig snapshot is now newer than build/CMakeCache.txt
+        # sdkconfig snapshot is now newer than build/build.ninja
         assert has_outdated_files() is True
         clean.reset_mock()
-        # A settled configure restamps the cache; an unchanged rewrite
+        # A settled configure rewrites build.ninja; an unchanged rewrite
         # must then neither clean nor mark the build stale
         future = time.time() + 60
-        os.utime(CORE.relative_build_path("build/CMakeCache.txt"), (future, future))
+        os.utime(CORE.relative_build_path("build/build.ninja"), (future, future))
         _write_sdkconfig()
         clean.assert_not_called()
         assert has_outdated_files() is False
