@@ -4,6 +4,7 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+import io
 import json
 import os
 from pathlib import Path
@@ -29,6 +30,45 @@ from esphome.const import (
 )
 from esphome.core import CORE, EsphomeError
 from esphome.espidf import toolchain
+from esphome.util import RedirectText
+
+_KCONFIG_HEX_NOTE = (
+    "\x1b[38;2;0;119;187mNOTE:\x1b[0m /idf/components/esp_mm/Kconfig:20: "
+    "Deprecation notice: hex literal '0' without '0x' prefix detected. In "
+    "the next major version, hex literals will be required to have a '0x' prefix."
+)
+_KCONFIG_CHOICE_NOTE = (
+    "NOTE: /idf/components/bt/host/bluedroid/Kconfig.in:75: Choice symbol "
+    "BT_ENC_KEY_SIZE_CTRL_STD (member of BT_ENC_KEY_SIZE_CTRL_ENABLED choice) "
+    "is defined with a warning, which has no effect for choice symbols."
+)
+_KCONFIG_HIDDEN_NOTE = (
+    "NOTE: /idf/components/lwip/Kconfig:522: LWIP_IPV6_AUTOCONFIG has user-set "
+    "value n from /build/sdkconfig.test but is not visible (disabled dependency)"
+)
+
+
+@pytest.mark.parametrize(
+    ("line", "dropped"),
+    [
+        ("-- KCONFIG_REPORT_VERBOSITY not set, using default", True),
+        ("NOTE: Kconfig parser version: 1", True),
+        ("NOTE: Kconfig defaults policy: use sdkconfig", True),
+        ("NOTE: Status: Finished successfully", True),
+        (_KCONFIG_HEX_NOTE, True),
+        (_KCONFIG_CHOICE_NOTE, True),
+        # A value ESPHome or the user set that Kconfig ignores is worth seeing
+        ("NOTE: Status: Finished with notifications", False),
+        (_KCONFIG_HIDDEN_NOTE, False),
+    ],
+)
+def test_filter_idf_lines_drops_kconfig_notes_about_idf(
+    line: str, dropped: bool
+) -> None:
+    out = io.StringIO()
+    redirect = RedirectText(out, filter_lines=toolchain.FILTER_IDF_LINES)
+    redirect.write(line + "\n")
+    assert (line not in out.getvalue()) is dropped
 
 
 def test_get_framework_source_override_no_config():

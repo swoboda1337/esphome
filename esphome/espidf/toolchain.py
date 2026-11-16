@@ -228,6 +228,13 @@ FILTER_IDF_LINES: list[str] = [
     r"\s*Memory Type Usage Summary",
     r"Note: The reported total sizes may be smaller than those in the",
     r"\s*$",
+    # Kconfig report banner and notes about ESP-IDF's own Kconfig files,
+    # repeated at every configure. Notes about sdkconfig values stay.
+    r"-- KCONFIG_REPORT_VERBOSITY not set",
+    r"NOTE: Kconfig (?:parser version|defaults policy): ",
+    r"NOTE: Status: Finished successfully",
+    r"NOTE: .*: Deprecation notice: hex literal ",
+    r"NOTE: .*: Choice symbol \S+ .* is defined with a warning",
     # esphome-libs tarballs have no .git, so IDF's commit probes fail noisily.
     r"-- git rev-parse returned ",
     r"fatal: not a git repository",
