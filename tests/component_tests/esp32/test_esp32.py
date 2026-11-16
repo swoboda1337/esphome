@@ -763,10 +763,9 @@ _TLS_OFF_IDF6 = {
     "CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT": False,
     **_TLS_OFF_CRYPTO,
 }
-_PEER_CERT_PKCS7_OFF = {
-    "CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE": False,
-    "CONFIG_MBEDTLS_PKCS7_C": False,
-}
+_PEER_CERT_OFF = {"CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE": False}
+# PKCS#7 is only written while the CRL parser it depends on stays in
+_PEER_CERT_PKCS7_OFF = {**_PEER_CERT_OFF, "CONFIG_MBEDTLS_PKCS7_C": False}
 _TLS_EXTRAS_OFF = dict.fromkeys(MBEDTLS_TLS_EXTRA_OPTIONS, False)
 _TLS_CLIENT_ONLY = {
     "CONFIG_MBEDTLS_TLS_CLIENT_ONLY": True,
@@ -784,7 +783,7 @@ _IDF6 = cv.Version(6, 0, 0)
             _IDF5,
             MbedtlsSdkconfigData(),
             {},
-            {**_TLS_OFF_IDF5, **_TLS_EXTRAS_OFF, **_PEER_CERT_PKCS7_OFF},
+            {**_TLS_OFF_IDF5, **_TLS_EXTRAS_OFF, **_PEER_CERT_OFF},
             set(_ESP_TLS_LINKING_COMPONENTS),
             id="idf5_no_tls_user",
         ),
@@ -816,7 +815,7 @@ _IDF6 = cv.Version(6, 0, 0)
             {
                 **_TLS_OFF_IDF6,
                 **_TLS_EXTRAS_OFF,
-                **_PEER_CERT_PKCS7_OFF,
+                **_PEER_CERT_OFF,
                 "CONFIG_MBEDTLS_SHA384_C": False,
                 "CONFIG_MBEDTLS_SHA512_C": False,
             },
@@ -828,7 +827,7 @@ _IDF6 = cv.Version(6, 0, 0)
             _IDF6,
             MbedtlsSdkconfigData(sha512_required=True),
             {},
-            {**_TLS_OFF_IDF6, **_TLS_EXTRAS_OFF, **_PEER_CERT_PKCS7_OFF},
+            {**_TLS_OFF_IDF6, **_TLS_EXTRAS_OFF, **_PEER_CERT_OFF},
             set(_ESP_TLS_LINKING_COMPONENTS),
             id="idf6_sha512_required",
         ),
@@ -844,7 +843,7 @@ _IDF6 = cv.Version(6, 0, 0)
                     if k != "CONFIG_MBEDTLS_ECP_C"
                 },
                 **_TLS_EXTRAS_OFF,
-                **_PEER_CERT_PKCS7_OFF,
+                **_PEER_CERT_OFF,
             },
             set(_ESP_TLS_LINKING_COMPONENTS),
             id="idf_ecp_without_tls",
@@ -858,10 +857,25 @@ _IDF6 = cv.Version(6, 0, 0)
                 **_TLS_OFF_IDF5,
                 "CONFIG_MBEDTLS_ECP_C": RawSdkconfigValue("y"),
                 **_TLS_EXTRAS_OFF,
-                **_PEER_CERT_PKCS7_OFF,
+                **_PEER_CERT_OFF,
             },
             set(_ESP_TLS_LINKING_COMPONENTS),
             id="idf_user_ecp_wins",
+        ),
+        pytest.param(
+            # A user who keeps the CRL parser still gets PKCS#7 turned off.
+            PlatformFramework.ESP32_IDF,
+            _IDF5,
+            MbedtlsSdkconfigData(),
+            {"CONFIG_MBEDTLS_X509_CRL_PARSE_C": RawSdkconfigValue("y")},
+            {
+                **_TLS_OFF_IDF5,
+                "CONFIG_MBEDTLS_X509_CRL_PARSE_C": RawSdkconfigValue("y"),
+                **_TLS_EXTRAS_OFF,
+                **_PEER_CERT_PKCS7_OFF,
+            },
+            set(_ESP_TLS_LINKING_COMPONENTS),
+            id="idf_user_crl_parser_keeps_pkcs7_off",
         ),
         pytest.param(
             PlatformFramework.ESP32_IDF,
@@ -1402,9 +1416,51 @@ def test_flash_mode_sets_sdkconfig_and_pio_option(
     sdkconfig = CORE.data[KEY_ESP32][KEY_SDKCONFIG_OPTIONS]
     assert sdkconfig.get("CONFIG_ESPTOOLPY_FLASHMODE_QIO") is True
     assert sdkconfig.get("CONFIG_ESPTOOLPY_FLASHFREQ_80M") is True
-    assert sdkconfig.get("CONFIG_ESPTOOLPY_OCT_FLASH") is False
+    assert "CONFIG_ESPTOOLPY_OCT_FLASH" not in sdkconfig
     assert CORE.platformio_options.get("board_build.flash_mode") == "qio"
     assert CORE.platformio_options.get("board_build.f_flash") == "80000000L"
+
+
+def _generate_variant(
+    generate_main: Callable[[str | Path], str], tmp_path: Path, esp32: str
+) -> dict[str, Any]:
+    config = tmp_path / "test.yaml"
+    config.write_text(
+        f"esphome:\n  name: test\n\nesp32:\n{esp32}  framework:\n    type: esp-idf\n"
+    )
+    generate_main(config)
+    return CORE.data[KEY_ESP32][KEY_SDKCONFIG_OPTIONS]
+
+
+def test_flash_mode_turns_octal_flash_off_on_s3(
+    generate_main: Callable[[str | Path], str], tmp_path: Path
+) -> None:
+    """Only the ESP32-S3 has the octal flash switch; other modes turn it off there."""
+    sdkconfig = _generate_variant(
+        generate_main, tmp_path, "  variant: esp32s3\n  flash_mode: qio\n"
+    )
+    assert sdkconfig.get("CONFIG_ESPTOOLPY_OCT_FLASH") is False
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected"),
+    [
+        ("esp32", False),
+        ("esp32c2", False),
+        ("esp32s2", False),
+        ("esp32c3", True),
+        ("esp32s3", True),
+    ],
+)
+def test_secondary_console_only_set_with_usb_serial_jtag(
+    generate_main: Callable[[str | Path], str],
+    tmp_path: Path,
+    variant: str,
+    expected: bool,
+) -> None:
+    """The secondary console choice does not exist without a USB Serial/JTAG controller."""
+    sdkconfig = _generate_variant(generate_main, tmp_path, f"  variant: {variant}\n")
+    assert ("CONFIG_ESP_CONSOLE_SECONDARY_NONE" in sdkconfig) is expected
 
 
 @pytest.mark.parametrize(

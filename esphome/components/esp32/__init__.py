@@ -2140,6 +2140,12 @@ def require_full_certificate_bundle() -> None:
     CORE.data[KEY_ESP32][KEY_FULL_CERT_BUNDLE] = True
 
 
+# The secondary console choice only exists with a USB Serial/JTAG controller
+_NO_USB_SERIAL_JTAG_VARIANTS = frozenset(
+    {VARIANT_ESP32, VARIANT_ESP32C2, VARIANT_ESP32S2}
+)
+
+
 def require_usb_serial_jtag_secondary() -> None:
     """Mark that USB Serial/JTAG secondary console is required by a component.
 
@@ -2848,7 +2854,11 @@ async def _reconcile_mbedtls_sdkconfig() -> None:
 
     if data.pkcs7_required:
         set_idf_sdkconfig_default("CONFIG_MBEDTLS_PKCS7_C", True)
-    elif data.disable_pkcs7:
+    elif data.disable_pkcs7 and (
+        "CONFIG_MBEDTLS_X509_CRL_PARSE_C" not in opts
+        or is_idf_sdkconfig_option_enabled("CONFIG_MBEDTLS_X509_CRL_PARSE_C")
+    ):
+        # Hidden, and so already off, without the CRL parser it depends on
         set_idf_sdkconfig_default("CONFIG_MBEDTLS_PKCS7_C", False)
 
     # SHA-384 shares the SHA-512 compression function, so both go together.
@@ -3195,8 +3205,9 @@ async def to_code(config):
         add_idf_sdkconfig_option(
             f"CONFIG_ESPTOOLPY_FLASHMODE_{flash_mode.upper()}", True
         )
-        # the opi mode choice only exists once octal flash is enabled
-        add_idf_sdkconfig_option("CONFIG_ESPTOOLPY_OCT_FLASH", flash_mode == "opi")
+        if variant == VARIANT_ESP32S3:
+            # the opi mode choice only exists once octal flash is enabled
+            add_idf_sdkconfig_option("CONFIG_ESPTOOLPY_OCT_FLASH", flash_mode == "opi")
     if flash_frequency := config.get(CONF_FLASH_FREQUENCY):
         add_idf_sdkconfig_option(
             f"CONFIG_ESPTOOLPY_FLASHFREQ_{flash_frequency[:-3]}M", True
@@ -3564,7 +3575,10 @@ async def to_code(config):
     # Components like logger can call require_usb_serial_jtag_secondary() to re-enable
     if CORE.data[KEY_ESP32].get(KEY_USB_SERIAL_JTAG_SECONDARY_REQUIRED, False):
         add_idf_sdkconfig_option("CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG", True)
-    elif advanced[CONF_DISABLE_USB_SERIAL_JTAG_SECONDARY]:
+    elif (
+        advanced[CONF_DISABLE_USB_SERIAL_JTAG_SECONDARY]
+        and variant not in _NO_USB_SERIAL_JTAG_VARIANTS
+    ):
         add_idf_sdkconfig_option("CONFIG_ESP_CONSOLE_SECONDARY_NONE", True)
 
     # Disable /dev/null VFS initialization

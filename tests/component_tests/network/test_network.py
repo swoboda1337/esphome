@@ -19,6 +19,7 @@ from esphome.components.zephyr.const import KEY_PRJ_CONF
 from esphome.config import load_config
 from esphome.const import CONF_ENABLE_IPV6, KEY_FRAMEWORK_VERSION, PlatformFramework
 from esphome.core import CORE, Version
+from tests.component_tests.network import sdkconfig_option
 from tests.component_tests.types import SetCoreConfigCallable
 
 
@@ -73,6 +74,26 @@ def test_ip_family_defines(
     generate_main(component_config_path(config_file))
     assert _define_value("USE_NETWORK_IPV4") == ipv4
     assert _define_value("USE_NETWORK_IPV6") == ipv6
+
+
+@pytest.mark.parametrize(
+    ("config_file", "ipv6", "autoconfig"),
+    [
+        ("ipv6_only.yaml", True, True),
+        # the option is hidden while IPv6 is off
+        ("ipv6_off_nothing_required.yaml", False, None),
+    ],
+)
+def test_esp32_ipv6_autoconfig_only_set_with_ipv6(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+    config_file: str,
+    ipv6: bool,
+    autoconfig: bool | None,
+) -> None:
+    generate_main(component_config_path(config_file))
+    assert sdkconfig_option("CONFIG_LWIP_IPV6") is ipv6
+    assert sdkconfig_option("CONFIG_LWIP_IPV6_AUTOCONFIG") is autoconfig
 
 
 @pytest.mark.parametrize(

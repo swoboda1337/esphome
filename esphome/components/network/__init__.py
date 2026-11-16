@@ -667,7 +667,8 @@ async def to_code(config: ConfigType) -> None:
         )
     if CORE.is_esp32:
         add_idf_sdkconfig_option("CONFIG_LWIP_IPV6", enable_ipv6)
-        add_idf_sdkconfig_option("CONFIG_LWIP_IPV6_AUTOCONFIG", enable_ipv6)
+        if enable_ipv6:
+            add_idf_sdkconfig_option("CONFIG_LWIP_IPV6_AUTOCONFIG", True)
     elif enable_ipv6:
         cg.add_build_flag("-DCONFIG_LWIP_IPV6")
         cg.add_build_flag("-DCONFIG_LWIP_IPV6_AUTOCONFIG")
