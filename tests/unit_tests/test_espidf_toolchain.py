@@ -42,9 +42,17 @@ _KCONFIG_CHOICE_NOTE = (
     "BT_ENC_KEY_SIZE_CTRL_STD (member of BT_ENC_KEY_SIZE_CTRL_ENABLED choice) "
     "is defined with a warning, which has no effect for choice symbols."
 )
-_KCONFIG_HIDDEN_NOTE = (
+_KCONFIG_HIDDEN_OFF_NOTE = (
     "NOTE: /idf/components/lwip/Kconfig:522: LWIP_IPV6_AUTOCONFIG has user-set "
     "value n from /build/sdkconfig.test but is not visible (disabled dependency)"
+)
+_KCONFIG_HIDDEN_ON_NOTE = (
+    "NOTE: /idf/components/lwip/Kconfig:522: LWIP_IPV6_AUTOCONFIG has user-set "
+    "value y from /build/sdkconfig.test but is not visible (disabled dependency)"
+)
+_KCONFIG_HIDDEN_CHOICE_NOTE = (
+    "NOTE: /idf/components/esp_stdio/Kconfig:35: ESP_CONSOLE_SECONDARY has user-set "
+    "value ESP_CONSOLE_SECONDARY_NONE from /build/sdkconfig.test but is not visible"
 )
 
 
@@ -57,9 +65,11 @@ _KCONFIG_HIDDEN_NOTE = (
         ("NOTE: Status: Finished successfully", True),
         (_KCONFIG_HEX_NOTE, True),
         (_KCONFIG_CHOICE_NOTE, True),
-        # A value ESPHome or the user set that Kconfig ignores is worth seeing
-        ("NOTE: Status: Finished with notifications", False),
-        (_KCONFIG_HIDDEN_NOTE, False),
+        ("NOTE: Status: Finished with notifications", True),
+        (_KCONFIG_HIDDEN_OFF_NOTE, True),
+        # An option that was asked for and cannot be turned on is worth seeing
+        (_KCONFIG_HIDDEN_ON_NOTE, False),
+        (_KCONFIG_HIDDEN_CHOICE_NOTE, False),
     ],
 )
 def test_filter_idf_lines_drops_kconfig_notes_about_idf(

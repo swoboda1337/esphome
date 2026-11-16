@@ -229,12 +229,14 @@ FILTER_IDF_LINES: list[str] = [
     r"Note: The reported total sizes may be smaller than those in the",
     r"\s*$",
     # Kconfig report banner and notes about ESP-IDF's own Kconfig files,
-    # repeated at every configure. Notes about sdkconfig values stay.
+    # repeated at every configure. A hidden option is off, so being told
+    # that a "n" was ignored says nothing; an ignored "y" is still shown.
     r"-- KCONFIG_REPORT_VERBOSITY not set",
     r"NOTE: Kconfig (?:parser version|defaults policy): ",
-    r"NOTE: Status: Finished successfully",
+    r"NOTE: Status: Finished ",
     r"NOTE: .*: Deprecation notice: hex literal ",
     r"NOTE: .*: Choice symbol \S+ .* is defined with a warning",
+    r"NOTE: .* has user-set value n from .* but is not visible",
     # esphome-libs tarballs have no .git, so IDF's commit probes fail noisily.
     r"-- git rev-parse returned ",
     r"fatal: not a git repository",
