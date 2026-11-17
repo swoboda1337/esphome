@@ -101,10 +101,16 @@ uint8_t MLX90393Cls::apply_setting_(MLX90393Setting which) {
   return ret;
 }
 
-void MLX90393Cls::exit_mode_() {
-  const uint8_t cmd = MLX90393::CMD_EXIT;
+uint8_t MLX90393Cls::command_(uint8_t cmd) {
   uint8_t status = 0;
-  this->transceive(&cmd, 1, &status, 1);
+  if (!this->transceive(&cmd, 1, &status, 1)) {
+    return MLX90393::STATUS_ERROR;
+  }
+  return status;
+}
+
+void MLX90393Cls::exit_mode_() {
+  this->command_(MLX90393::CMD_EXIT);
   delay(EXIT_DELAY_MS);
 }
 
@@ -127,11 +133,31 @@ bool MLX90393Cls::reset_() {
   for (uint8_t attempt = 0; attempt < READY_ATTEMPTS; attempt++) {
     if (this->read_register_(MLX90393::GAIN_SEL_REG, value)) {
       this->reserved_bits_ = value & RESERVED_BITS_MASK;
+      this->ready_reads_ = attempt + 1;
       return true;
     }
     delay(1);
   }
+  this->ready_reads_ = 0;
   return false;
+}
+
+MLX90393Cls::RegisterSnapshot MLX90393Cls::read_snapshot_() {
+  RegisterSnapshot snapshot;
+  snapshot.valid = true;
+  for (uint8_t address = 0; address < 3; address++) {
+    snapshot.valid &= this->read_register_(address, snapshot.values[address]);
+  }
+  return snapshot;
+}
+
+void MLX90393Cls::log_snapshot_(const LogString *label, const RegisterSnapshot &snapshot) {
+  if (!snapshot.valid) {
+    ESP_LOGCONFIG(TAG, "    Registers %s: read failed", LOG_STR_ARG(label));
+    return;
+  }
+  ESP_LOGCONFIG(TAG, "    Registers %s: 0x%04X 0x%04X 0x%04X", LOG_STR_ARG(label), snapshot.values[0],
+                snapshot.values[1], snapshot.values[2]);
 }
 
 bool MLX90393Cls::apply_all_settings_() {
@@ -147,10 +173,17 @@ void MLX90393Cls::setup() {
   // note the two arguments A0 and A1 which are used to construct an i2c address
   // we can hard-code these because we never actually use the constructed address
   // see the transceive function above, which uses the address from I2CComponent
+  this->boot_status_ = this->command_(MLX90393::CMD_NOP);
+  this->boot_snapshot_ = this->read_snapshot_();
   this->exit_mode_();
-  this->mlx_.begin_with_hal(this, 0, 0);
+  this->init_status_ = this->mlx_.begin_with_hal(this, 0, 0);
+  this->init_snapshot_ = this->read_snapshot_();
 
-  if (!this->reset_() || !this->apply_all_settings_()) {
+  bool ok = this->reset_();
+  this->reset_snapshot_ = this->read_snapshot_();
+  ok = ok && this->apply_all_settings_();
+  this->settings_snapshot_ = this->read_snapshot_();
+  if (!ok) {
     this->mark_failed();
   }
 
@@ -161,6 +194,18 @@ void MLX90393Cls::setup() {
 void MLX90393Cls::dump_config() {
   ESP_LOGCONFIG(TAG, "MLX90393:");
   LOG_I2C_DEVICE(this);
+
+  ESP_LOGCONFIG(TAG,
+                "  Reset diagnostics:\n"
+                "    Status at boot: 0x%02X\n"
+                "    Library init status: 0x%02X\n"
+                "    Reads until ready after reset: %u\n"
+                "    Resets by verify: %u",
+                this->boot_status_, this->init_status_, this->ready_reads_, this->verify_resets_);
+  this->log_snapshot_(LOG_STR("at boot"), this->boot_snapshot_);
+  this->log_snapshot_(LOG_STR("after library init"), this->init_snapshot_);
+  this->log_snapshot_(LOG_STR("after reset"), this->reset_snapshot_);
+  this->log_snapshot_(LOG_STR("after settings"), this->settings_snapshot_);
 
   if (this->is_failed()) {
     ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
@@ -299,6 +344,7 @@ void MLX90393Cls::verify_settings_timeout_(MLX90393Setting stage) {
   bool is_setting_ok = this->verify_setting_(stage);
 
   if (!is_setting_ok) {
+    this->verify_resets_++;
     if (!this->reset_()) {
       ESP_LOGE(TAG, "failed to reset device");
       this->status_set_error();

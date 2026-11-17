@@ -72,8 +72,25 @@ class MLX90393Cls final : public PollingComponent, public i2c::I2CDevice, public
   uint16_t reserved_bits_{0};
   GPIOPin *drdy_pin_{nullptr};
 
+  struct RegisterSnapshot {
+    uint16_t values[3]{0};
+    bool valid{false};
+  };
+
+  RegisterSnapshot boot_snapshot_;
+  RegisterSnapshot init_snapshot_;
+  RegisterSnapshot reset_snapshot_;
+  RegisterSnapshot settings_snapshot_;
+  uint16_t verify_resets_{0};
+  uint8_t boot_status_{0};
+  uint8_t init_status_{0};
+  uint8_t ready_reads_{0};
+
+  uint8_t command_(uint8_t cmd);
   void exit_mode_();
   bool read_register_(uint8_t address, uint16_t &value);
+  RegisterSnapshot read_snapshot_();
+  void log_snapshot_(const LogString *label, const RegisterSnapshot &snapshot);
   bool reset_();
   bool apply_all_settings_();
   uint8_t apply_setting_(MLX90393Setting which);
