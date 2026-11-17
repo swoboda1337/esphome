@@ -1,6 +1,7 @@
 #ifndef USE_BK72XX
 
 #include "sensor_mlx90393.h"
+#include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
 namespace esphome::mlx90393 {
@@ -11,6 +12,8 @@ static constexpr uint32_t VERIFY_SETTINGS_TIMEOUT_ID = 0;
 static constexpr uint32_t EXIT_DELAY_MS = 2;
 static constexpr uint32_t RESET_DELAY_MS = 2;
 static constexpr uint8_t READY_ATTEMPTS = 5;
+// ANA_RESERVED_LOW, BIST and Z_SERIES
+static constexpr uint16_t RESERVED_BITS_MASK = 0xFF80;
 
 const LogString *settings_to_string(MLX90393Setting setting) {
   switch (setting) {
@@ -28,6 +31,8 @@ const LogString *settings_to_string(MLX90393Setting setting) {
       return LOG_STR("temperature compensation");
     case MLX90393_HALLCONF:
       return LOG_STR("hallconf");
+    case MLX90393_RESERVED_BITS:
+      return LOG_STR("reserved bits");
     case MLX90393_LAST:
       return LOG_STR("error");
     default:
@@ -85,6 +90,9 @@ uint8_t MLX90393Cls::apply_setting_(MLX90393Setting which) {
     case MLX90393_HALLCONF:
       ret = this->mlx_.setHallConf(this->hallconf_);
       break;
+    case MLX90393_RESERVED_BITS:
+      ret = MLX90393::STATUS_OK;
+      break;
     default:
       break;
   }
@@ -101,13 +109,25 @@ void MLX90393Cls::exit_mode_() {
   delay(EXIT_DELAY_MS);
 }
 
+bool MLX90393Cls::read_register_(uint8_t address, uint16_t &value) {
+  const uint8_t request[2] = {MLX90393::CMD_READ_REGISTER, static_cast<uint8_t>(address << 2)};
+  uint8_t response[3] = {0};
+  if (!this->transceive(request, sizeof(request), response, sizeof(response)) ||
+      (response[0] & MLX90393::ERROR_BIT) != 0) {
+    return false;
+  }
+  value = encode_uint16(response[1], response[2]);
+  return true;
+}
+
 bool MLX90393Cls::reset_() {
   this->exit_mode_();
   this->mlx_.reset();
   delay(RESET_DELAY_MS);
-  uint8_t ignore = 0;
+  uint16_t value = 0;
   for (uint8_t attempt = 0; attempt < READY_ATTEMPTS; attempt++) {
-    if (this->mlx_.getGainSel(ignore) == MLX90393::STATUS_OK) {
+    if (this->read_register_(MLX90393::GAIN_SEL_REG, value)) {
+      this->reserved_bits_ = value & RESERVED_BITS_MASK;
       return true;
     }
     delay(1);
@@ -226,6 +246,17 @@ bool MLX90393Cls::verify_setting_(MLX90393Setting which) {
     case MLX90393_HALLCONF: {
       read_status = this->mlx_.getHallConf(read_value);
       expected_value = this->hallconf_;
+      break;
+    }
+    case MLX90393_RESERVED_BITS: {
+      uint16_t value = 0;
+      if (this->read_register_(MLX90393::GAIN_SEL_REG, value)) {
+        read_status = MLX90393::STATUS_OK;
+        const uint16_t reserved_bits = value & RESERVED_BITS_MASK;
+        snprintf(read_back_str, sizeof(read_back_str), "0x%04X expected 0x%04X", reserved_bits, this->reserved_bits_);
+        read_value = reserved_bits == this->reserved_bits_ ? 0 : 1;
+        expected_value = 0;
+      }
       break;
     }
     default: {
