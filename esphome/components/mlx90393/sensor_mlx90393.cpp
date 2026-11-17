@@ -154,11 +154,11 @@ MLX90393Cls::RegisterSnapshot MLX90393Cls::read_snapshot_() {
 
 void MLX90393Cls::log_snapshot_(const LogString *label, const RegisterSnapshot &snapshot) {
   if (!snapshot.valid) {
-    ESP_LOGCONFIG(TAG, "    Registers %s: read failed", LOG_STR_ARG(label));
+    ESP_LOGW(TAG, "    Registers %s: read failed", LOG_STR_ARG(label));
     return;
   }
-  ESP_LOGCONFIG(TAG, "    Registers %s: 0x%04X 0x%04X 0x%04X", LOG_STR_ARG(label), snapshot.values[0],
-                snapshot.values[1], snapshot.values[2]);
+  ESP_LOGW(TAG, "    Registers %s: 0x%04X 0x%04X 0x%04X", LOG_STR_ARG(label), snapshot.values[0], snapshot.values[1],
+           snapshot.values[2]);
 }
 
 bool MLX90393Cls::apply_all_settings_() {
@@ -196,13 +196,13 @@ void MLX90393Cls::dump_config() {
   ESP_LOGCONFIG(TAG, "MLX90393:");
   LOG_I2C_DEVICE(this);
 
-  ESP_LOGCONFIG(TAG,
-                "  Reset diagnostics:\n"
-                "    Status at boot: 0x%02X\n"
-                "    Library init status: 0x%02X\n"
-                "    Reads until ready after reset: %u\n"
-                "    Resets by verify: %u",
-                this->boot_status_, this->init_status_, this->ready_reads_, this->verify_resets_);
+  ESP_LOGW(TAG,
+           "  Reset diagnostics:\n"
+           "    Status at boot: 0x%02X\n"
+           "    Library init status: 0x%02X\n"
+           "    Reads until ready after reset: %u\n"
+           "    Resets by verify: %u",
+           this->boot_status_, this->init_status_, this->ready_reads_, this->verify_resets_);
   this->log_snapshot_(LOG_STR("at boot"), this->boot_snapshot_);
   this->log_snapshot_(LOG_STR("after library init"), this->init_snapshot_);
   this->log_snapshot_(LOG_STR("after reset"), this->reset_snapshot_);
