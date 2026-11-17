@@ -19,6 +19,7 @@ enum MLX90393Setting {
   MLX90393_TEMPERATURE_OVER_SAMPLING,
   MLX90393_TEMPERATURE_COMPENSATION,
   MLX90393_HALLCONF,
+  MLX90393_RESERVED_BITS,
   MLX90393_LAST,
 };
 
@@ -68,9 +69,11 @@ class MLX90393Cls final : public PollingComponent, public i2c::I2CDevice, public
   uint8_t resolutions_[3]{0};
   bool temperature_compensation_{false};
   uint8_t hallconf_{0xC};
+  uint16_t reserved_bits_{0};
   GPIOPin *drdy_pin_{nullptr};
 
   void exit_mode_();
+  bool read_register_(uint8_t address, uint16_t &value);
   bool reset_();
   bool apply_all_settings_();
   uint8_t apply_setting_(MLX90393Setting which);
