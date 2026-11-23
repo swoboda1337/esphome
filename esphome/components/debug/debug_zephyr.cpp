@@ -7,6 +7,14 @@
 #include <zephyr/kernel.h>
 #include <zephyr/storage/flash_map.h>
 
+#if defined(CONFIG_NEWLIB_LIBC) && !defined(CONFIG_NEWLIB_LIBC_CUSTOM_SBRK) && !defined(CONFIG_USERSPACE) && \
+    !defined(CONFIG_MMU)
+#define DEBUG_ZEPHYR_NEWLIB_HEAP
+#include <malloc.h>
+// NOLINTNEXTLINE(bugprone-reserved-identifier,cert-dcl37-c,cert-dcl51-cpp,readability-identifier-naming)
+extern "C" void *_sbrk(intptr_t count);
+#endif
+
 namespace esphome::debug {
 
 ESPHOME_LOG_TAG(TAG, "debug");
@@ -22,7 +30,16 @@ const char *DebugComponent::get_wakeup_cause_(std::span<char, WAKEUP_CAUSE_BUFFE
   return "";
 }
 
+#ifdef DEBUG_ZEPHYR_NEWLIB_HEAP
+uint32_t DebugComponent::get_free_heap_() {
+  // The newlib arena grows from _end to the end of SRAM: unclaimed tail plus free chunks inside the arena
+  const uintptr_t ram_end = CONFIG_SRAM_BASE_ADDRESS + KB(CONFIG_SRAM_SIZE);
+  const uintptr_t arena_end = reinterpret_cast<uintptr_t>(_sbrk(0));
+  return static_cast<uint32_t>(ram_end - arena_end) + static_cast<uint32_t>(mallinfo().fordblks);
+}
+#else
 uint32_t DebugComponent::get_free_heap_() { return INT_MAX; }
+#endif
 
 static void fa_cb(const struct flash_area *fa, void *user_data) {
 #if CONFIG_FLASH_MAP_LABELS
