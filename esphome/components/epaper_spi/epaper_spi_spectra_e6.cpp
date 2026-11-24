@@ -20,19 +20,25 @@ uint8_t EPaperSpectraE6::color_to_native(Color color) {
   return color_to_bwyrgb<uint8_t>(color, BLACK, WHITE, YELLOW, RED, GREEN, BLUE);
 }
 
+// The controller needs time to raise busy after a command, before the next step reads busy
+static constexpr uint16_t BUSY_ASSERT_MS = 10;
+
 void EPaperSpectraE6::power_on() {
   ESP_LOGV(TAG, "Power on");
   this->command(0x04);
+  this->next_delay_ = BUSY_ASSERT_MS;
 }
 
 void EPaperSpectraE6::power_off() {
   ESP_LOGV(TAG, "Power off");
   this->cmd_data(0x02, {0x00});
+  this->next_delay_ = BUSY_ASSERT_MS;
 }
 
 void EPaperSpectraE6::refresh_screen(bool partial) {
   ESP_LOGV(TAG, "Refresh");
   this->cmd_data(0x12, {0x00});
+  this->next_delay_ = BUSY_ASSERT_MS;
 }
 
 void EPaperSpectraE6::deep_sleep() {
